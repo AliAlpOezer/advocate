@@ -1,0 +1,9 @@
+.venv/
+__pycache__/
+*.pyc
+.env
+checkpoints.sqlite
+
+# videos, sound files 
+.mp*
+.waw

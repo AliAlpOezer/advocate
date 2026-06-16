@@ -1,0 +1,10 @@
+# LangGraph flagship — Munich AI job-market agent.
+# Pinned to mutually-compatible recent majors (LangChain 0.3 / LangGraph 0.2+).
+langgraph>=0.2.50
+langgraph-checkpoint-sqlite>=2.0.0
+langchain-core>=0.3.0
+langchain-openai>=0.2.0        # OpenRouter (free gpt-oss) via OpenAI-compatible base_url
+langchain-anthropic>=0.2.0     # Claude opt-in (reliable structured output + prompt caching)
+pydantic>=2.7
+python-dotenv>=1.0
+httpx>=0.27
