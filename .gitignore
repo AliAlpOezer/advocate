@@ -3,7 +3,7 @@ __pycache__/
 *.pyc
 .env
 checkpoints.sqlite
-
+.client_secret.json
 # videos, sound files 
 .mp*
 .waw
