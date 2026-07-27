@@ -7,3 +7,23 @@ checkpoints.sqlite
 # videos, sound files 
 .mp*
 .waw
+# ---------------------------------------------------------------
+# Personal data never belongs in this repo. The system reads it
+# from a separate private store (see README, "Data separation").
+# ---------------------------------------------------------------
+data/
+assets/
+applications/
+src/advocate/eval/golden/
+*EVIDENCE_DOSSIER*
+*evidence_dossier*
+master_resume*
+Lebenslauf*
+Anschreiben*
+Projektliste*
+*.pdf
+
+# Browser profiles hold live sessions - never commit one.
+.playwright-profile/
+browser-profile/
+*.cookies.json
