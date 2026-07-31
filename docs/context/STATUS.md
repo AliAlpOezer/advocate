@@ -9,10 +9,22 @@ Next bucket is CSS → design system and HTML → Jinja templates.
 
 ## The objective, restated by Alp 2026-07-31 — read this before writing any document
 
-The goal is **landing an AI/ML/LLM/agentic engineering role in Munich or fully remote**.
-Alp has decided to move to Munich. The dossier, the claim store and the grounding check
-are *instruments* for that, not the deliverable — a defensible document nobody reads is
-a failure. His words: *"we dont want to lie, but everybody MUST exaggerate their skills."*
+The goal is **the role that best advances Alp's AI/ML career, at a prestigious company
+where possible**. The dossier, the claim store and the grounding check are *instruments*
+for that, not the deliverable — a defensible document nobody reads is a failure. His
+words: *"we dont want to lie, but everybody MUST exaggerate their skills."*
+
+**He is admitted to the TUM Wirtschaftsinformatik MSc**, which is why he is moving to
+Munich (assumed start: winter semester, October 2026 — unconfirmed). So the profile is:
+- **Preferred** — Werkstudent, part-time, or genuinely flexible roles compatible with the MSc.
+- **Also in scope** — full-time, if strong enough that taking it and dropping the MSc wins.
+- **Munich is a plus, not a filter.** He will live there; remote and flexible also qualify.
+- **Rank on prestige and career trajectory**, not only on requirement match.
+
+The six-weeks-of-LLM-work problem (§8.1) is a weak hand for a senior posting and a very
+strong one in a Werkstudent pool — that portfolio on top of ~3.5 years professional
+engineering enters top-decile there. Werkstudent at a prestigious Munich AI company is
+the efficient door, and it is the ranking bias the fit-scorer should carry.
 
 Split the two axes and treat them oppositely:
 - **Checkable facts** — dates, employers, degrees, tech actually used, metrics. Never
@@ -31,8 +43,12 @@ licence to soften a claim that is true.
 behind document generation. Alp's stated goal is *finding* the job, which suggests that
 ordering is backwards. Not yet decided.
 
-**Dossier debt:** `EVIDENCE_DOSSIER.md` §1 still lists Würzburg and sells the ~15–20 km
-Giebelstadt commute as an advantage. Dead for Munich roles; needs rewriting.
+**Dossier debt** in `advocate-data/EVIDENCE_DOSSIER.md`:
+- §1 lists Würzburg and sells the ~15–20 km Giebelstadt commute as an advantage. Dead.
+- §2 says "never imply a Master's". Superseded — **admitted to the TUM MSc
+  Wirtschaftsinformatik** is now true, claimable, and one of the strongest lines available.
+- §8.1's seniority framing was written for full-time postings and does not apply to a
+  Werkstudent application, where six weeks of LLM work is a strength rather than a ceiling.
 
 ## In flight
 
