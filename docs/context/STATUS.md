@@ -4,8 +4,35 @@ Last updated: 2026-07-31
 
 ## Current focus
 
-Phase 0 (Extract) of the Advocate rebuild. The persistence layer is now provisioned;
-next is turning `EVIDENCE_DOSSIER.md` into a machine-enforceable claim store.
+Phase 0 (Extract) of the Advocate rebuild. Store provisioned, claim schema landed.
+Next bucket is CSS → design system and HTML → Jinja templates.
+
+## The objective, restated by Alp 2026-07-31 — read this before writing any document
+
+The goal is **landing an AI/ML/LLM/agentic engineering role in Munich or fully remote**.
+Alp has decided to move to Munich. The dossier, the claim store and the grounding check
+are *instruments* for that, not the deliverable — a defensible document nobody reads is
+a failure. His words: *"we dont want to lie, but everybody MUST exaggerate their skills."*
+
+Split the two axes and treat them oppositely:
+- **Checkable facts** — dates, employers, degrees, tech actually used, metrics. Never
+  inflate. This is what `gap` grades and forbidden phrasings are for, and the reason is
+  tactical: Azure dies in the first technical screen, "7–13 months of LLM work" dies
+  against the commit dates the CV invites a reader to check.
+- **Framing, ordering, emphasis** — push hard. The strongest true framing usually beats
+  the vague inflated one anyway: "a production autonomous agent, a from-scratch RAG stack
+  with a measured RAGAS baseline, an MCP server and a voice agent, in six weeks" outsells
+  "1 year of LLM experience" *and* survives scrutiny. Six weeks is the flex, not the caveat.
+
+Do not volunteer caveats nobody asked for, and do not read a `⚠️` in the dossier as
+licence to soften a claim that is true.
+
+**Open, and it affects the whole plan:** the concept doc schedules discovery as Phase 3,
+behind document generation. Alp's stated goal is *finding* the job, which suggests that
+ordering is backwards. Not yet decided.
+
+**Dossier debt:** `EVIDENCE_DOSSIER.md` §1 still lists Würzburg and sells the ~15–20 km
+Giebelstadt commute as an advantage. Dead for Munich roles; needs rewriting.
 
 ## In flight
 

@@ -5,6 +5,31 @@ is to stop an agent from cheerfully re-proposing something already rejected.
 
 Prune aggressively: once a decision is so embedded it could never be revisited, delete it.
 
+### Claim wording lives in a `phrasings` table, not `text_de`/`text_en` on the claim
+Date: 2026-07-31 · Status: settled · Supersedes the claim schema sketched in
+`advocate-system-concept.md`
+Reading the real `EVIDENCE_DOSSIER.md` showed the sketched schema
+(`text_de`/`text_en` + `evidence_grade` + `never_claim` bool) could not express four
+things that are pervasive in it, so all four are now first-class:
+1. **Phrasing rules on assertable claims.** "Never write *Travelling Salesman Problem*",
+   "never *identified the need for*", "say *familiar with*, not *read*". These constrain
+   claims that are perfectly true, so a `never_claim` flag cannot carry them, and a
+   free-text field invites the drafter to paraphrase around them. `phrasings` rows are
+   `required` / `preferred` / `forbidden` per language; a row with **no `claim_id` is a
+   global rule** scanned against every draft regardless of what was cited.
+2. **`audience_scope`.** Dossier §8b is SSI Schäfer-only and says explicitly that none of
+   it transfers. Nothing in the sketch stopped it leaking into an unrelated AI/ML letter.
+3. **`requires_claims` + `min_supporting`.** §10.3 is assertable only when paired with ≥2
+   of three named artifacts. That is citation cardinality, not a grade.
+4. **`verification` split from `grade`.** Where evidence came from and how strong it is are
+   independent: the "top 5 state high school" claim is self-reported yet usable;
+   scikit-learn is well-documented coursework that must never read as experience.
+Also: `evidence_grade`'s `never-claim` value and the redundant `never_claim` bool collapse
+into a single `gap` grade, with "gap ⇒ no surfaces" as a CHECK constraint. Constraints are
+enforced in Postgres as well as Pydantic, because the loader will not be the only writer.
+Cost we accepted: a claim now spans two tables, so every read needs a join, and curating
+one takes more thought than filling in two text fields.
+
 ### Self-hosted Postgres 16 + pgvector on the `alpiclawd` box, not Supabase
 Date: 2026-07-31 · Status: settled · Supersedes the "Supabase" line in
 `advocate-system-concept.md` (the store choice, not the Postgres choice)
