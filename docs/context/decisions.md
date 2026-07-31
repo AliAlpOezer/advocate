@@ -5,6 +5,27 @@ is to stop an agent from cheerfully re-proposing something already rejected.
 
 Prune aggressively: once a decision is so embedded it could never be revisited, delete it.
 
+### Self-hosted Postgres 16 + pgvector on the `alpiclawd` box, not Supabase
+Date: 2026-07-31 · Status: settled · Supersedes the "Supabase" line in
+`advocate-system-concept.md` (the store choice, not the Postgres choice)
+Postgres 16.14 + pgvector 0.6.0 on the home Ubuntu server (`alpiclawd`, a converted
+ThinkPad, x86_64, 4 cores / 7.6 GB), reachable only over Tailscale. Chosen over Supabase
+(no third-party holds the evidence base; no free-tier pause) and over SQLite.
+The concept doc's stated reason for rejecting SQLite — "a local SQLite checkpoint does
+not give durability across restarts" — is **wrong**; `SqliteSaver` persists to disk fine.
+The real reasons: (a) development happens on the Windows laptop while the DB lives on the
+box, and SQLite has no network protocol; (b) the hunt runner, gate API and UI are
+concurrent writers, which is where SQLite starts returning `database is locked`.
+Hardening: `listen_addresses = '*'` deliberately, with access restricted by `pg_hba`
+(`100.64.0.0/10` + `fd7a:115c:a1e0::/48`, scram-sha-256) and ufw (`5432 on tailscale0`).
+Binding straight to the Tailscale IP would race `tailscaled` at boot and leave Postgres
+dead after a reboot. Nightly `pg_dump -Fc` at 03:30 via `advocate-backup.timer`, 14 dailies
+in `/var/backups/advocate`. Credentials: `/root/.advocate/` on the box, `.env` locally.
+Cost we accepted: pgvector 0.6.0 is the distro build, so no `halfvec`/`sparsevec` (0.7.0+)
+— irrelevant at this corpus size, and staying on distro packages keeps it inside
+`unattended-upgrades`. Also: the box is a home machine on WiFi, so it is a real
+single point of failure, and backups are on-box only.
+
 ### Prompt-for-JSON + Pydantic-validate instead of `with_structured_output`
 Date: 2026-06-17 (repo init) · Status: settled
 Chose manual JSON-object prompting + `SkillExtraction.model_validate()` (with up to 3
