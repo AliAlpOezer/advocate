@@ -119,14 +119,38 @@ databank. Archived separately rather than deleted; the titles are real.
 
 1. **Checkpoint 1** — Alp reviews the rubric, the tier table and `TARGET_COMPANIES`, then
    `rescope-hunt-v2` merges to master and the box deploys it on the next tick.
-2. **Phase B** — live run, then `advocate-data/docs/shortlist-2026-08.md`: top ~25 ranked
-   with per-axis breakdown, arrangement and an honest reachability read. Alp cuts it to 5–8.
-   Gated on the OpenRouter daily quota resetting (00:00 UTC).
+2. **Phase B** — first live run is **done** (2026-08-02, see below); still to write is
+   `advocate-data/docs/shortlist-2026-08.md`: top ~25 ranked with per-axis breakdown,
+   arrangement and an honest reachability read. Alp cuts it to 5–8. No longer gated on
+   the OpenRouter quota — that constraint is gone.
 3. **Phase C** — tailored CV + Anschreiben per chosen role, by hand, with a manual claim-ID
    review pass standing in for the grounding check.
 4. Then: `apply` subgraph specced from those drafts, eval at n≈7, CSS → design system and
    HTML → Jinja (driven by Phase C's needs), scaffolding (`pyproject`/uv, CI), and the
    remaining ~330 lines of `EVIDENCE_DOSSIER.md` migrated into claims.
+
+## The hunt's LLM gate moved off OpenRouter, 2026-08-02
+
+Alp's call: OpenRouter's free tier meters **50 requests per day per account** and the
+primary account is shared with `nemotron-mcp`, so the fit gate could only ever judge a
+quarter of a run (~52 of 203). Keyword score, not fit, was deciding the shortlist.
+
+The hunt now calls a local **OmniRoute** gateway — OpenAI-compatible, pools other
+providers' free endpoints behind `auto/*` combo routes, no API key. Measured 170 requests
+with zero 429s and a 100% scorecard parse rate before deploying. Installed on `alpiclawd`
+as a resident `omniroute.service`; the hunt's oneshot unit `Wants` it, so a dead gateway
+degrades the run to keyword order instead of cancelling it.
+
+First live box run the same day: **150 judgments, 0 failures, 119 dropped by the gates,
+31 qualifying.** The top of the shortlist is now Werkstudent AI/DS at BMW, Allianz,
+Rohde & Schwarz, BCG and Airbus — the profile this was re-aimed at. `LLM_MAX_CALLS` 40 →
+150, `LLM_CONCURRENCY` 2 → 6, `TimeoutStartSec` 600 → 1800; wall clock, not quota, is now
+the binding constraint. OpenRouter stays as `LLM_PROVIDER=openrouter` but is never a
+silent fallback. Detail in `advocate-data/docs/context/job-search-agent.md`.
+
+Open, found in the same journal and **not** fixed: 207 of 426 LinkedIn *detail* fetches
+429'd, so about half the postings were judged on title + company alone. That is
+`DETAIL_CONCURRENCY`, unrelated to the provider switch.
 
 ## Recently landed
 
