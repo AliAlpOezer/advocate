@@ -39,9 +39,21 @@ Split the two axes and treat them oppositely:
 Do not volunteer caveats nobody asked for, and do not read a `⚠️` in the dossier as
 licence to soften a claim that is true.
 
-**Open, and it affects the whole plan:** the concept doc schedules discovery as Phase 3,
-behind document generation. Alp's stated goal is *finding* the job, which suggests that
-ordering is backwards. Not yet decided.
+**Settled 2026-08-02 — discovery moves to the front.** The concept doc scheduled it as
+Phase 3, behind document generation and eval. That was backwards for the stated goal, and
+redundant: discovery already exists and works. It is the TypeScript hunter in
+`advocate-data/job-search/`, deployed on `alpiclawd` under a 3-hourly systemd timer.
+
+**It is not being ported to Python.** Porting a working scraper buys nothing and costs the
+hiring window. Later, the hunter writes leads into the same Postgres and Advocate reads
+from there. Revised order: discovery (now) → documents by hand → `apply` subgraph →
+eval → the rest of the concept doc's phases.
+
+**The window is the constraint.** Winter-semester Werkstudent hiring runs August–September;
+the first applications should go out within 4–6 weeks of 2026-08-02. That decides every
+build-vs-do tradeoff. Documents for the first batch are drafted **by hand**, in the loop,
+against the dossier and `claims.yaml` — those hand-drafts become the spec for the `apply`
+subgraph and its eval fixtures, instead of the concept doc's guess.
 
 **Dossier debt** in `advocate-data/EVIDENCE_DOSSIER.md`:
 - §1 lists Würzburg and sells the ~15–20 km Giebelstadt commute as an advantage. Dead.
@@ -52,8 +64,41 @@ ordering is backwards. Not yet decided.
 
 ## In flight
 
-- Branch `add-context-pack` — repo restructured into `src/advocate/`, concept doc landed,
-  Postgres store provisioned, claim schema landed. Not yet committed.
+- Branch `add-context-pack` (this repo) — restructured into `src/advocate/`, concept doc,
+  Postgres store, claim schema. All committed; 5 commits ahead of `main`, not pushed.
+- Branch `rescope-hunt-v2` (`advocate-data`) — the hunt re-aimed at the TUM/Werkstudent
+  profile. **Awaiting review before merge to master**, because the box pulls
+  `master --ff-only` every tick and would deploy it immediately.
+
+## The hunt, re-aimed 2026-08-02
+
+The scorer was still ranking against the pre-reset profile. Now:
+- Five-axis scorecard — `ambition`, `prestige`, `reachability` as a weighted **geometric**
+  mean, plus `mscCompatible` / `munichViable` as hard gates on the Werkstudent track.
+  Geometric because the axes are conjunctive: arithmetically a Staff ML Scientist post at a
+  top lab scores 67 and tops the shortlist all week without ever replying.
+- Full-time roles face a higher floor (72) than Werkstudent ones (50). The MSc is the
+  default path, so a merely-decent full-time job is a *worse* outcome than MSc + Werkstudent
+  and must not compete as an equal.
+- Curated 4-tier employer table, because a small model ranks brands differently every run
+  and an unstable ranking key makes the shortlist unreproducible.
+- Databank reset: 432 scorable postings archived with all derived fields stripped;
+  `seen_jobs.json` cleared.
+
+**Two real bugs found by reproducing rather than reasoning:**
+1. The "28 of 80 judgment failures" recorded on 2026-07-28 were **not** a gate limit. The
+   default model reasons in the open and spent its entire 400-token ceiling thinking,
+   truncating before it emitted a single axis. Parse rate 0/8 before the fix, 6/6 after.
+   A truncated reply is now rejected even when it parses — it produced a complete,
+   plausible, wholly fabricated scorecard built from the model's scratchpad.
+2. `markSeen()` marked every fetched posting whether or not it was judged, so on the free
+   tier (50 req/day/account) most of a run would be burned permanently — fetched once,
+   never judged, never seen again, with no error. Unjudged postings are now deferred.
+
+**Indeed removed as a source.** HTTP 403 on all six queries and every detail fetch, every
+tick since 2026-07-29. The link-scan fallback scraped titles off the 403 pages, so it
+failed quietly: 323 rows with a real title, no company, no description — 43% of the
+databank. Archived separately rather than deleted; the titles are real.
 
 ## Open questions — carried, not blocking
 
@@ -72,12 +117,16 @@ ordering is backwards. Not yet decided.
 
 ## Next up
 
-1. Bucket 2: extract shared CSS from the SSI/BCG HTML into a design system; the three
-   document types become Jinja templates.
-2. Bucket 3: scaffolding — `pyproject`/uv, `ADVOCATE_DATA_DIR` resolution, package rename
-   cleanup, CI. The repo currently has no installable package definition.
-3. Migrate the remaining ~330 lines of `EVIDENCE_DOSSIER.md` into claims (14 of the
-   hardest cases are done; the rest is volume, not design).
+1. **Checkpoint 1** — Alp reviews the rubric, the tier table and `TARGET_COMPANIES`, then
+   `rescope-hunt-v2` merges to master and the box deploys it on the next tick.
+2. **Phase B** — live run, then `advocate-data/docs/shortlist-2026-08.md`: top ~25 ranked
+   with per-axis breakdown, arrangement and an honest reachability read. Alp cuts it to 5–8.
+   Gated on the OpenRouter daily quota resetting (00:00 UTC).
+3. **Phase C** — tailored CV + Anschreiben per chosen role, by hand, with a manual claim-ID
+   review pass standing in for the grounding check.
+4. Then: `apply` subgraph specced from those drafts, eval at n≈7, CSS → design system and
+   HTML → Jinja (driven by Phase C's needs), scaffolding (`pyproject`/uv, CI), and the
+   remaining ~330 lines of `EVIDENCE_DOSSIER.md` migrated into claims.
 
 ## Recently landed
 
