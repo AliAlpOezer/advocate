@@ -152,9 +152,13 @@ databank. Archived separately rather than deleted; the titles are real.
    introduced `build_pdf.py` is still unmerged. Merging this branch means repointing that
    checkout, or the box keeps drafting against a dead branch.
 
-   Still open on the harness: nemotron-3-ultra is a reasoning model and its tool-calling
-   has not been verified inside OpenCode's loop. That is the next check, and it gates
-   rewriting `agent.ts` around it.
+   **The harness is now unblocked — both gates cleared 2026-08-06.** nemotron-3-ultra
+   drives OpenCode's file-tool loop correctly (4 turns, 2 reads + 1 write, and it named
+   the deliberately-uncovered requirement as `GAP` rather than inventing a claim). The
+   45-minute latency that looked fatal was **OpenCode Zen's free-tier queue, not the
+   model**: the same probe on the box against `openrouter/nvidia/
+   nemotron-3-ultra-550b-a55b:free` finished in **53 seconds**. The box now has an
+   OpenRouter credential in OpenCode's `auth.json`. Next is the `agent.ts` swap itself.
 4. Then: `apply` subgraph specced from those drafts, eval at n≈7, CSS → design system and
    HTML → Jinja (driven by Phase C's needs), scaffolding (`pyproject`/uv, CI), and the
    remaining ~330 lines of `EVIDENCE_DOSSIER.md` migrated into claims.
