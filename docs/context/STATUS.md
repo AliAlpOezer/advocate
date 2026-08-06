@@ -1,11 +1,13 @@
 # Status — advocate
 
-Last updated: 2026-07-31
+Last updated: 2026-08-05
 
 ## Current focus
 
-Phase 0 (Extract) of the Advocate rebuild. Store provisioned, claim schema landed.
-Next bucket is CSS → design system and HTML → Jinja templates.
+Phase C (tailored CV/cover-letter drafting, run by hand as `advocate-data`'s
+`cv-drafter` skill) is underway; first validation run complete. CSS → design system
+and HTML → Jinja templates remain queued behind it, per the 2026-08-02 phase reorder
+below.
 
 ## The objective, restated by Alp 2026-07-31 — read this before writing any document
 
@@ -57,8 +59,9 @@ subgraph and its eval fixtures, instead of the concept doc's guess.
 
 **Dossier debt** in `advocate-data/EVIDENCE_DOSSIER.md`:
 - §1 lists Würzburg and sells the ~15–20 km Giebelstadt commute as an advantage. Dead.
-- §2 says "never imply a Master's". Superseded — **admitted to the TUM MSc
-  Wirtschaftsinformatik** is now true, claimable, and one of the strongest lines available.
+- §2 says "never imply a Master's". **Done 2026-08-05** — annotated superseded, and TUM
+  MSc active enrollment is now a real claim (`edu.tum_msc.active_enrollment`), not just a
+  noted opportunity. See Phase C below.
 - §8.1's seniority framing was written for full-time postings and does not apply to a
   Werkstudent application, where six weeks of LLM work is a strength rather than a ceiling.
 
@@ -123,8 +126,12 @@ databank. Archived separately rather than deleted; the titles are real.
    `advocate-data/docs/shortlist-2026-08.md`: top ~25 ranked with per-axis breakdown,
    arrangement and an honest reachability read. Alp cuts it to 5–8. No longer gated on
    the OpenRouter quota — that constraint is gone.
-3. **Phase C** — tailored CV + Anschreiben per chosen role, by hand, with a manual claim-ID
-   review pass standing in for the grounding check.
+3. **Phase C is underway, run by hand as the `cv-drafter` Claude Code skill** in
+   `advocate-data/.claude/skills/cv-drafter/` (built 2026-08-05). First validation run
+   (Temedica, composite 76) is complete and ready to send. Detail, and the design for
+   the planned send/apply loop that follows it, lives in `advocate-data/docs/context/
+   apply-send-loop.md` and `cv-drafter-skill.md` — read those before resuming this
+   workstream, not this file alone.
 4. Then: `apply` subgraph specced from those drafts, eval at n≈7, CSS → design system and
    HTML → Jinja (driven by Phase C's needs), scaffolding (`pyproject`/uv, CI), and the
    remaining ~330 lines of `EVIDENCE_DOSSIER.md` migrated into claims.
