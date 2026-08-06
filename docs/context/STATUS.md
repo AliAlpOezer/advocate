@@ -1,6 +1,6 @@
 # Status — advocate
 
-Last updated: 2026-08-05
+Last updated: 2026-08-06
 
 ## Current focus
 
@@ -128,8 +128,10 @@ databank. Archived separately rather than deleted; the titles are real.
    the OpenRouter quota — that constraint is gone.
 3. **Phase C is underway, run by hand as the `cv-drafter` Claude Code skill** in
    `advocate-data/.claude/skills/cv-drafter/` (built 2026-08-05). First validation run
-   (Temedica, composite 76) is complete and ready to send. Detail, and the design for
-   the planned send/apply loop that follows it, lives in `advocate-data/docs/context/
+   (Temedica, composite 76) is complete and ready to send. The apply/send loop around it
+   is being built in `advocate-data/apply/`: state store, approval bot and headless draft
+   loop are done (Buckets 1-3, 2026-08-06), send channels and an end-to-end dry run are
+   not. None of it is deployed yet. Detail lives in `advocate-data/docs/context/
    apply-send-loop.md` and `cv-drafter-skill.md` — read those before resuming this
    workstream, not this file alone.
 4. Then: `apply` subgraph specced from those drafts, eval at n≈7, CSS → design system and
