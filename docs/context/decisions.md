@@ -5,6 +5,18 @@ is to stop an agent from cheerfully re-proposing something already rejected.
 
 Prune aggressively: once a decision is so embedded it could never be revisited, delete it.
 
+### Chrome is the only PDF renderer. Do not add a library for Linux.
+Date: 2026-08-06 · Status: settled
+`build_pdf.py` now resolves the browser off `PATH` (with an `ADVOCATE_CHROME_BIN`
+override), so it runs on the laptop and on `alpiclawd` alike: a real `Lebenslauf`
+renders there in 0.6s. **Rejected: WeasyPrint / wkhtmltopdf / Playwright's PDF
+export.** Each is a *second* renderer, and the templates are hand-tuned to Chrome's
+paged media - so the PDF Alp approves and the PDF a recruiter opens could paginate
+differently, which is exactly what the approval gate exists to prevent. Chrome also
+embeds fonts; a pure-Python library trades that away to save one `.deb`.
+Install Google's `.deb` - Ubuntu's `chromium-browser` (noble, `2:1snap1`) is a snap
+stub, and snap is the wrong shape for a systemd unit with a minimal `PATH`.
+
 ### Claim wording lives in a `phrasings` table, not `text_de`/`text_en` on the claim
 Date: 2026-07-31 · Status: settled · Supersedes the claim schema sketched in
 `advocate-system-concept.md`
