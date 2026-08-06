@@ -152,13 +152,20 @@ databank. Archived separately rather than deleted; the titles are real.
    introduced `build_pdf.py` is still unmerged. Merging this branch means repointing that
    checkout, or the box keeps drafting against a dead branch.
 
-   **The harness is now unblocked — both gates cleared 2026-08-06.** nemotron-3-ultra
-   drives OpenCode's file-tool loop correctly (4 turns, 2 reads + 1 write, and it named
-   the deliberately-uncovered requirement as `GAP` rather than inventing a claim). The
-   45-minute latency that looked fatal was **OpenCode Zen's free-tier queue, not the
-   model**: the same probe on the box against `openrouter/nvidia/
-   nemotron-3-ultra-550b-a55b:free` finished in **53 seconds**. The box now has an
-   OpenRouter credential in OpenCode's `auth.json`. Next is the `agent.ts` swap itself.
+   **The harness is done as of 2026-08-06.** Both gates cleared — nemotron-3-ultra
+   drives OpenCode's file-tool loop correctly, and the 45-minute latency that looked
+   fatal was **OpenCode Zen's free-tier queue, not the model**: the same probe against
+   `openrouter/nvidia/nemotron-3-ultra-550b-a55b:free` finished in **53 seconds**. So
+   `agent.ts` no longer shells out to `claude -p`; it drives OpenCode across a
+   failover chain (OpenRouter → Zen → NIM) with the seven keys rotating inside tier 1
+   on 429, cv-drafter's SKILL.md inlined into a brief because OpenCode does not
+   discover `.claude/skills/`, and the permission lists ported across.
+
+   **Not yet run: one end-to-end draft through the new path.** Everything below the
+   model call is verified, and the model call is verified on its own, but not the
+   whole together. Two deploy steps also remain — the seven keys are not in the box's
+   drafter environment (so rotation is built but inert), and Bucket 2 needs BotFather.
+   Detail in `advocate-data/docs/context/apply-send-loop.md`.
 4. Then: `apply` subgraph specced from those drafts, eval at n≈7, CSS → design system and
    HTML → Jinja (driven by Phase C's needs), scaffolding (`pyproject`/uv, CI), and the
    remaining ~330 lines of `EVIDENCE_DOSSIER.md` migrated into claims.
