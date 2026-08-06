@@ -161,11 +161,17 @@ databank. Archived separately rather than deleted; the titles are real.
    on 429, cv-drafter's SKILL.md inlined into a brief because OpenCode does not
    discover `.claude/skills/`, and the permission lists ported across.
 
-   **Not yet run: one end-to-end draft through the new path.** Everything below the
-   model call is verified, and the model call is verified on its own, but not the
-   whole together. Two deploy steps also remain — the seven keys are not in the box's
-   drafter environment (so rotation is built but inert), and Bucket 2 needs BotFather.
-   Detail in `advocate-data/docs/context/apply-send-loop.md`.
+   **The end-to-end draft was run twice on 2026-08-06 and did not complete.**
+   Everything below the model call is now verified on real data — selection, fetch,
+   scaffolding, the inlined brief, the store, and `verify.ts` catching all eight
+   defects so nothing false reached the approval gate. Both runs died inside the
+   first model call on NVIDIA-side capacity errors (502 `ResourceExhausted`, then 504
+   idle timeout) with zero tool calls. **The blocking defect: `opencode run` exits 0
+   on a provider stream error, so `runDrafter()` declares success before checking,
+   and the whole failover chain — key rotation, Zen, NIM — never fires.** Fix that
+   before re-running, or attempts just repeat one broken tier. Two deploy steps also
+   remain — the seven keys are not in the box's drafter environment, and Bucket 2
+   needs BotFather. Detail in `advocate-data/docs/context/apply-send-loop.md`.
 4. Then: `apply` subgraph specced from those drafts, eval at n≈7, CSS → design system and
    HTML → Jinja (driven by Phase C's needs), scaffolding (`pyproject`/uv, CI), and the
    remaining ~330 lines of `EVIDENCE_DOSSIER.md` migrated into claims.

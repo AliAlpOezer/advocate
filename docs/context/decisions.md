@@ -98,3 +98,61 @@ rotation, no CAPTCHA solving. On 429/999 we back off, never evade." LinkedIn acc
 the unauthenticated guest job-search endpoints, not the authenticated API.
 Cost we accepted: LinkedIn coverage is capped by whatever the guest endpoint allows
 before it starts rate-limiting; no workaround is attempted.
+
+## The drafting agent is a LangGraph subgraph here, not an agent CLI shelled out to
+
+Decided 2026-08-06, Alp's call, reversing the harness decision taken earlier the same
+day. The drafting step of `advocate-data`'s apply loop ran by shelling out to an agent
+CLI: first `claude -p`, then `opencode run` when the box could not authenticate Claude
+Code. Both were the same bet - hand cv-drafter's SKILL.md to somebody else's agent loop.
+
+**What called the bet.** Two live runs died inside the first model call, on a 502
+(`Worker local total request limit reached (33/32)`) and a 504 (`Upstream idle timeout`),
+after 206s and 310s, with zero tool calls. **OpenCode exited 0 both times**, so the
+driver reported success for runs that wrote nothing, and the failover chain underneath
+it - key rotation, Zen, NIM - was gated on a non-zero exit that this class of failure
+never produces. Only `verify.ts` caught it, by noticing the documents were still
+byte-identical to the SSI template.
+
+**Rejected: patch the exit-code check and keep OpenCode.** It would have fixed that one
+symptom while leaving the rest: a subprocess whose stdout only flushes at exit, key
+rotation smuggled through `OPENCODE_CONFIG_CONTENT` because `OPENROUTER_API_KEY` is
+ignored when `auth.json` exists, a permission dialect where `apply/**` fails open and
+`**/apply/**` does not, version skew between the laptop's 1.14 and the box's 1.18, and a
+session-title model that defaults to a paid one. That is a large accidental surface for
+a job that needs four tools.
+
+**Where it lives:** `src/advocate/apply/` - `state.py`, `tools.py`, `providers.py`,
+`prompt.py`, `graph.py`, `cli.py`. The concept doc always specified an `apply` subgraph
+here, so this is arriving at the planned destination rather than detouring; the OpenCode
+harness was scaffolding that had to be thrown away either way. `advocate-data`'s
+`draft.ts` keeps selection, scaffolding, `verify.ts` and the store - none of which ever
+failed - and calls `py -m advocate.apply.cli`, so the swap stayed contained to
+`agent.ts`, exactly as the previous swap did.
+
+## Three design choices in the drafting subgraph that are not obvious
+
+**Grounding material is preloaded, not fetched.** SKILL.md, `EVIDENCE_DOSSIER.md` and
+`claims.yaml` (~85 KB, measured 85,587 chars) go into the system prompt verbatim. Under
+OpenCode each was a read the model could silently skip, and a draft written without the
+dossier looks identical to one written with it until every sentence is re-checked. The
+free Nemotron route carries a 1M context, so there is no reason to make the one law
+depend on the model choosing to read its own evidence. `references/cv-research.md` is
+deliberately *not* preloaded - the skill says to read it only when a choice needs
+justifying, and that instruction is still worth honouring.
+
+**Confinement is a resolved-path check, not a pattern map.** Writes resolve under
+`applications/<slug>/` or raise; `..`, absolute paths and symlink games are neutralised
+by resolution rather than by string inspection. This replaces a glob dialect that was
+measured to fail open and was never verified at all on the laptop's OpenCode version.
+There is also no shell: rendering imports `build_pdf.render`, so the entire bash
+permission surface - and any question of reaching `git commit` - does not exist.
+
+**Rotation policy, refining rather than reversing "429 and nothing else".** That rule
+was right about its target: a bad key or a wrong model id fails identically on all seven
+keys, so rotating buries the reason. It had no case for what actually happened. Now:
+rate limits rotate the key; transient upstream 5xx and timeouts retry once on the same
+key then advance the tier, because both observed failures were NVIDIA-side capacity and
+rotating keys against a saturated upstream just spends the pool to hit the same wall;
+401/403/404 abandons the tier immediately without touching another key, which is Alp's
+original rule preserved for the case it was written for.
