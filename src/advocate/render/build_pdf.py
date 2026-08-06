@@ -1,7 +1,6 @@
 """Render an application HTML file to a print-ready A4 PDF.
 
-Why this exists: Node/npx is broken on this machine, so the toolchain is Python +
-headless Chrome. Chrome is the renderer because it is the only engine here that
+Why Chrome and not a PDF library: it is the only engine in this toolchain that
 does real CSS paged media, and it embeds fonts into the PDF so the file looks the
 same on the recruiter's machine as it does here.
 
@@ -12,12 +11,16 @@ Two things it handles that a bare Chrome call does not:
      refuses to start whenever the user already has Chrome open, and exits 0
      having written nothing.
 
+Runs on the Windows laptop and on the Linux box (`alpiclawd`) that hosts the
+unattended draft loop, which is why the binary is looked up rather than hardcoded.
+
 Usage:
-    py build_pdf.py <input.html> [output.pdf]
+    python build_pdf.py <input.html> [output.pdf]
 """
 
 import base64
 import mimetypes
+import os
 import re
 import shutil
 import subprocess
@@ -25,18 +28,57 @@ import sys
 import tempfile
 from pathlib import Path
 
+# Looked up by name on PATH first, so a host that installed Chrome anywhere sane
+# works without editing this list. Order is preference, not availability: Chrome
+# proper before Chromium before Edge, because the house templates were laid out
+# against Chrome's paged-media output and the others differ by a hair.
+CHROME_NAMES = [
+    "google-chrome",
+    "google-chrome-stable",
+    "chromium",
+    "chromium-browser",
+    "msedge",
+]
+
+# Absolute fallbacks for the hosts that do not put the binary on PATH. Windows
+# never does; snap-packaged Chromium on Ubuntu only does when /snap/bin is on it,
+# which it is not for a systemd unit with a minimal environment.
 CHROME_CANDIDATES = [
     r"C:\Program Files\Google\Chrome\Application\chrome.exe",
     r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
     r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
+    "/usr/bin/google-chrome",
+    "/usr/bin/google-chrome-stable",
+    "/usr/bin/chromium",
+    "/usr/bin/chromium-browser",
+    "/snap/bin/chromium",
 ]
+
+# Override for a host where neither list finds the right binary. Checked first so
+# it can also be used to force a specific build when several are installed.
+CHROME_ENV_VAR = "ADVOCATE_CHROME_BIN"
 
 
 def find_chrome() -> str:
+    override = os.environ.get(CHROME_ENV_VAR)
+    if override:
+        if not Path(override).exists():
+            raise SystemExit(f"{CHROME_ENV_VAR}={override} does not exist.")
+        return override
+
+    for name in CHROME_NAMES:
+        found = shutil.which(name)
+        if found:
+            return found
+
     for candidate in CHROME_CANDIDATES:
         if Path(candidate).exists():
             return candidate
-    raise SystemExit("No Chrome/Edge binary found - cannot render PDF.")
+
+    raise SystemExit(
+        "No Chrome/Chromium/Edge binary found - cannot render PDF.\n"
+        f"Install one, put it on PATH, or set {CHROME_ENV_VAR} to its full path."
+    )
 
 
 def inline_images(html: str, base_dir: Path) -> str:
