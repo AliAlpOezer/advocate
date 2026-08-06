@@ -134,6 +134,27 @@ databank. Archived separately rather than deleted; the titles are real.
    not. None of it is deployed yet. Detail lives in `advocate-data/docs/context/
    apply-send-loop.md` and `cv-drafter-skill.md` — read those before resuming this
    workstream, not this file alone.
+
+   **Harness decided 2026-08-06** (this was the open block): the box cannot authenticate
+   Claude Code, so the draft loop moves to **OpenCode on `alpiclawd`** (installed, 1.18.14),
+   with the drafting model reached OpenRouter-first across the seven keys
+   (`nemotron-3-ultra-550b`), then OpenCode Zen, then NVIDIA NIM. **OmniRoute was measured
+   and rejected for the drafter** — it cannot pin a model and its free pool is empty for
+   most of the day; it stays unchanged for the hunt's fit gate. Not built yet: `agent.ts`
+   still shells out to `claude -p`. See `apply-send-loop.md` 2026-08-06.
+
+   **The box can render PDFs as of 2026-08-06.** Google Chrome stable 151 installed and
+   `/srv/advocate` cloned, so `build_pdf.py` is present and works there — verified, 3-page
+   PDF in 0.6s. Two things this repo owns came out of it: `build_pdf.py` was Windows-only
+   (`CHROME_CANDIDATES` held three `C:\Program Files\…` paths), so it now resolves the
+   browser off PATH with an `ADVOCATE_CHROME_BIN` override; and **`/srv/advocate` tracks
+   this `add-context-pack` branch, not `main`**, because the `src/` restructure that
+   introduced `build_pdf.py` is still unmerged. Merging this branch means repointing that
+   checkout, or the box keeps drafting against a dead branch.
+
+   Still open on the harness: nemotron-3-ultra is a reasoning model and its tool-calling
+   has not been verified inside OpenCode's loop. That is the next check, and it gates
+   rewriting `agent.ts` around it.
 4. Then: `apply` subgraph specced from those drafts, eval at n≈7, CSS → design system and
    HTML → Jinja (driven by Phase C's needs), scaffolding (`pyproject`/uv, CI), and the
    remaining ~330 lines of `EVIDENCE_DOSSIER.md` migrated into claims.
