@@ -15,6 +15,38 @@ Fix: <what to do>
 <!-- Entries below. Delete one the moment the underlying cause is fixed for good —
      a stale gotcha sends agents down a dead path with full confidence. -->
 
+### Every tier of the drafting chain fails and the draft produces nothing
+Cause: **two OpenRouter keys is not enough to run the chain.** Measured on the box
+2026-08-07, first real deployed tick: tier 1 `openrouter[key 1/1] nemotron-3-ultra-550b`
+rate limited immediately, then `openrouter-alt[key 1/1] nemotron-3-super-120b` returned
+`finish_reason='error'` with no content twice, and the run died with every tier exhausted.
+The failover logic is correct and did its job; there was simply nothing left to fail over
+to. STATUS has long said "the remaining five OpenRouter keys" - this is what their absence
+actually costs, which is the whole loop.
+Fix: add the other five keys to `/etc/advocate-apply/daemon.env` on `alpiclawd`, or set
+`ANTHROPIC_API_KEY` so tier 1 has a paid rung that is not rate limited. Until then the
+drafter deploys and runs but cannot finish a document.
+
+### There is no ANTHROPIC_API_KEY to find on this machine, and looking harder will not help
+Cause: Claude Code runs on subscription OAuth (`claudeAiOauth`), which is not an API key
+and is not interchangeable with one - `ChatAnthropic` needs a real key. Asked on
+2026-08-07 to "find the claude token since you are Claude"; there is none to find.
+Harvesting the session credential would also be the thing the global rule forbids, because
+it converts included subscription tokens into metered billing and breaks the prompt cache.
+Fix: create a key at `console.anthropic.com`. It is billed separately from the Claude
+subscription, which is what F4 already assumed ("metered API billing, not the
+subscription"). Nothing else is blocked on it: without the key a revision degrades to the
+free chain with a loud log line, exactly as designed.
+
+### A fix to the document template looks like falsifying a sent application
+Cause: `new-application.sh` copied the scaffold from `applications/SSI_Schaefer_Bewerbung`,
+a **real, already-sent** application. So the template and the record of what went out were
+the same bytes, and correcting the template meant editing history. That is why a stale
+Würzburg letterhead survived four applications: everyone who noticed it correctly declined
+to rewrite a sent document.
+Fix: fixed 2026-08-07 - `applications/_template/` is now the scaffold source and is not a
+record of anything. Never point the scaffold back at a real application.
+
 ### The Anthropic escalation tier fails on its first real run
 Cause: it has been compiled and unit-tested against a stub, never executed. `langchain-anthropic`
 is pinned in `requirements.txt` but **was not installed on the laptop** when

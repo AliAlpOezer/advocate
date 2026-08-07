@@ -24,7 +24,27 @@ Detail, including the two silent-success traps found while building it, is in
 `three-loop-architecture.md` §Built. **Nothing is deployed** — the box still needs the
 venv, the remaining five OpenRouter keys, `ANTHROPIC_API_KEY`, and Bucket 2's chat id.
 
-Next: **F2**, channel resolution at selection time, then components 1b and 4.
+**Deployed to `alpiclawd` 2026-08-07, and the gate is live.** `apply-bot.service` is
+running and polling; `/srv/advocate/.venv` exists with `requirements.txt` installed;
+`/etc/advocate-apply/daemon.env` carries the two OpenRouter keys, the venv interpreter and
+the queue cap; the Telegram chat id is set (Bucket 2's last gap, closed). Both suites pass
+**on the box**: 16 Python, 18 TypeScript.
+
+**The drafter cannot finish a document yet, and it is a supply problem, not a code one.**
+The first deployed tick walked its whole failover chain and ran out: one key rate limited,
+the alternate returned `finish_reason='error'` twice. Two OpenRouter keys is not enough to
+run the chain - see `gotchas.md`. Add the other five keys or an `ANTHROPIC_API_KEY` and the
+loop closes. **`apply-draft.timer` is deliberately NOT enabled** until then; enabling it
+would just fire failing runs twice a day.
+
+**F2 was answered by a button, not built.** A dead listing is now 🚫 Listing gone on the
+review card (plus `/gone <slug>`), which drops the record to `withdrawn`. Component 1b is
+struck. Rationale and the accepted tradeoff are in `three-loop-architecture.md` §F2.
+
+**F9's queue cap is built**: the drafter skips its tick at 3 pending reviews, resume path
+included.
+
+Next: the five keys, then component 4 (the submitter).
 
 Phase C (tailored CV/cover-letter drafting) is underway; first validation run complete.
 CSS → design system and HTML → Jinja templates remain queued behind it, per the
@@ -196,11 +216,14 @@ databank. Archived separately rather than deleted; the titles are real.
    and the three provider defects found underneath it are in
    `advocate-data/docs/context/apply-send-loop.md` and this repo's `decisions.md`.
 
-   **Found in that draft, and it is a content problem not a pipeline one:** the
-   cover letter gives Würzburg as the address and the dateline, because
-   `EVIDENCE_DOSSIER.md §1` still does. That is the dossier debt listed above,
-   now leaking into a real application aimed at Munich. Fix the dossier before
-   the next draft, not the letter.
+   **Fixed 2026-08-07: Alp is in München, and the old address is now un-sendable.**
+   Documents give the city only - no street address, no commute argument. The dossier
+   said Würzburg and sold a Giebelstadt commute; both are gone. `verify.ts` enforces it
+   by matching three *shapes* that assert residence (dateline, letterhead line, commute
+   construction) rather than the word, because Universität Würzburg, Flexus AG and the
+   Würzburger Wetterdaten project are all true and must survive. It fired correctly on
+   the box's first real run. All four existing applications, including the three already
+   sent, carry `97074 Würzburg`.
 
    **The end-to-end draft was run twice on 2026-08-06 and did not complete.**
    Everything below the model call is now verified on real data — selection, fetch,
