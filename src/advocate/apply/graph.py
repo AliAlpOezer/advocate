@@ -58,6 +58,14 @@ def build_stage_graph(stage: Stage, chat, app: Application, tools: list, sink: l
     """The agent/tools loop for one stage, with a filesystem check as its exit."""
     by_name = {t.name: t for t in tools}
     write_tool = "write_document" if stage.writer == "document" else "write_file"
+    # On a redraft the stage's own checks cannot be the exit condition on their
+    # own. Every file already passes them - passing is how the draft reached Alp
+    # in the first place - so a model that replies with prose and writes nothing
+    # would end the stage instantly and the pipeline would report a successful
+    # revision of a document it never touched. That is the silent-success shape
+    # this whole file exists to rule out, so on a revision the stage additionally
+    # has to have actually written its output this run.
+    require_write = bool(app.revision_reason)
 
     def agent(state: StageState) -> dict:
         turn = state.get("turns", 0) + 1
@@ -124,16 +132,29 @@ def build_stage_graph(stage: Stage, chat, app: Application, tools: list, sink: l
         drained, sink[:] = list(sink), []
         return {"messages": results, "tool_calls": drained}
 
+    def _outstanding(state: StageState) -> list[str]:
+        """What still has to happen before this stage may end."""
+        problems = stage.problems(app)
+        if problems:
+            return problems
+        if require_write and not any(
+            call.get("tool") == write_tool and call.get("ok") for call in state.get("tool_calls", [])
+        ):
+            return [
+                f"this is a redraft and no {write_tool} call has succeeded yet, so the file on "
+                f"disk is still the version Alp sent back - it passes every mechanical check, "
+                f"which is why it is not evidence that you have done anything"
+            ]
+        return []
+
     def nudge(state: StageState) -> dict:
         return {
-            "messages": [
-                HumanMessage(content=_nudge_text(stage, stage.problems(app), write_tool))
-            ],
+            "messages": [HumanMessage(content=_nudge_text(stage, _outstanding(state), write_tool))],
             "nudges": state.get("nudges", 0) + 1,
         }
 
     def _next(state: StageState) -> str:
-        if not stage.problems(app):
+        if not _outstanding(state):
             # Ending here rather than on another pass through the model is what
             # keeps a finished stage from spending one more turn - and one more
             # copy of the preloaded corpus - on a closing pleasantry.
@@ -156,7 +177,11 @@ def build_stage_graph(stage: Stage, chat, app: Application, tools: list, sink: l
     graph.add_conditional_edges("agent", route, {"tools": "tools", "nudge": "nudge", END: END})
     graph.add_conditional_edges("tools", _next, {"nudge": "nudge", END: END})
     graph.add_edge("nudge", "agent")
-    return graph.compile()
+    # `_outstanding` goes back with the graph so the caller judges the stage by
+    # the same rule the loop exited on. Recomputing "is it done" from
+    # `stage.problems()` alone up there would disagree with the loop on exactly
+    # the revision case, and disagree in the dangerous direction.
+    return graph.compile(), _outstanding
 
 
 def _stage_node(stage: Stage, chat, app: Application, sink: list[dict], system_for,
@@ -166,12 +191,23 @@ def _stage_node(stage: Stage, chat, app: Application, sink: list[dict], system_f
     # every stage at once and exists for debugging a single slow run.
     max_turns = max_turns or stage.max_turns
     tools = tools_for(stage, app, sink)
-    sub = build_stage_graph(stage, chat, app, tools, sink, max_turns, log)
+    sub, outstanding = build_stage_graph(stage, chat, app, tools, sink, max_turns, log)
 
     def node(state: DraftState) -> dict:
         started = time.time()
         before = stage.problems(app)
-        if not before:
+        # Resume-by-skipping is right for a retry and wrong for a revision, and
+        # the difference is invisible to `problems()`. After a crash, a stage
+        # whose output is already correct has nothing left to do. After Alp sends
+        # a draft back, every stage's output is *mechanically* correct - that is
+        # how it reached him - and his objection is precisely the thing no
+        # filesystem check can see. Skipping on that basis would turn a revision
+        # into a re-render of the document he rejected, and report success.
+        #
+        # So a revision re-runs every drafting stage. Which one his complaint
+        # touches is not knowable from the complaint, and a retry within a
+        # revision repeating a stage is bounded by APPLY_DRAFT_MAX_ATTEMPTS.
+        if not before and not app.revision_reason:
             log(f"{stage.name}: already complete, skipped")
             return {
                 "stages": [
@@ -191,7 +227,7 @@ def _stage_node(stage: Stage, chat, app: Application, sink: list[dict], system_f
             {
                 "messages": [
                     SystemMessage(content=system_for(stage)),
-                    HumanMessage(content=stage.build_task(app)),
+                    HumanMessage(content=stage.task_for(app)),
                 ],
                 "turns": 0,
                 "nudges": 0,
@@ -202,7 +238,7 @@ def _stage_node(stage: Stage, chat, app: Application, sink: list[dict], system_f
             {"recursion_limit": max_turns * 3 + 6},
         )
 
-        remaining = stage.problems(app)
+        remaining = outstanding(result)
         seconds = round(time.time() - started, 1)
         record = {
             "stage": stage.name,

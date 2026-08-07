@@ -8,6 +8,7 @@ task genuinely spans two rows.
 | "what's the state / what's next / what's blocked / is X done" | `STATUS.md` | 400 |
 | build a feature, change behaviour, "where does X live", "how does X flow" | `architecture.md` | 900 |
 | "why is it like this", proposing a rewrite, replacing a library or pattern | `decisions.md` | 700 |
+| how the three loops (hunt / draft / submit) fit together, or building a new one | `three-loop-architecture.md` | 2400 |
 | something is broken, flaky, slow, or behaves unexpectedly | `gotchas.md` | 600 |
 | anything else, or unclear | `STATUS.md` | 400 |
 

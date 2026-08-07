@@ -88,6 +88,13 @@ class Application:
     title: str
     url: str
     posting_file: str
+    # What Alp said was wrong with the previous draft, verbatim, empty on a first
+    # draft. It goes into the *task* message and never into the system prompt:
+    # the system prompt is the corpus, which is identical across every
+    # application and is what the Anthropic cache breakpoint sits on. Putting a
+    # per-application string in front of that breakpoint would cost the cache on
+    # every record for no gain.
+    revision_reason: str = ""
 
     @property
     def folder(self) -> Path:
@@ -333,6 +340,33 @@ one, say so here plainly and name the document it is in.
 """
 
 
+REVISION_BRIEF = """\
+=== THIS IS A REDRAFT ===
+
+Alp read the previous version of this application and sent it back. In his words:
+
+    {reason}
+
+That is the whole reason this is running again, so treat it as the highest
+priority instruction in this message. Nothing else about the job changed: the
+same evidence rules apply, and the previous documents are still on disk - read
+them, change what he objected to, and do not start over on the parts he did not.
+
+If his objection cannot be satisfied without inventing something, do not invent
+it. Say so plainly in strategy.md and get as close as the evidence allows.
+
+"""
+
+
+def _revision_brief(app: Application) -> str:
+    reason = (app.revision_reason or "").strip()
+    if not reason:
+        return ""
+    # Indented to match the template's block, so a multi-line reason stays
+    # visually inside the quote rather than reading as new instructions.
+    return REVISION_BRIEF.format(reason=reason.replace("\n", "\n    "))
+
+
 @dataclass(frozen=True)
 class Stage:
     """One node of the pipeline: a task, the tools for it, and how to tell it is done."""
@@ -343,6 +377,19 @@ class Stage:
     writer: str
     build_task: Callable[[Application], str]
     problems: Callable[[Application], list[str]]
+
+    def task_for(self, app: Application) -> str:
+        """The stage's task, with Alp's revision brief in front of it when there is one.
+
+        Every stage gets it, including `claims` - the complaint may well be that
+        a sentence was not traceable, and the stage that maps sentences to
+        sources is the one that has to hear about it.
+
+        First, not last, and quoted rather than paraphrased. It is the only part
+        of the prompt that came from a human who has read the previous attempt,
+        so it outranks everything the stage would otherwise decide for itself.
+        """
+        return _revision_brief(app) + self.build_task(app)
     # Small on purpose. Every stage here is one tool call's worth of work, so a
     # stage that has not finished in five turns is stuck, not slow.
     max_turns: int = 5

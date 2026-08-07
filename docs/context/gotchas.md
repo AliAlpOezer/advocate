@@ -15,6 +15,19 @@ Fix: <what to do>
 <!-- Entries below. Delete one the moment the underlying cause is fixed for good —
      a stale gotcha sends agents down a dead path with full confidence. -->
 
+### The Anthropic escalation tier fails on its first real run
+Cause: it has been compiled and unit-tested against a stub, never executed. `langchain-anthropic`
+is pinned in `requirements.txt` but **was not installed on the laptop** when
+`_anthropic_client()` was written (2026-08-07), so `ChatAnthropic`'s parameter surface was
+never introspected. The code deliberately passes only what `llm.py` already proves works
+(`model`, `api_key`, `max_tokens`, `timeout`, `max_retries`) and deliberately passes no
+effort argument - on Opus 5 effort defaults to `high`, which is what was wanted, so nothing
+had to be guessed. Anything added there later is unverified until it runs.
+Fix: `pip install -r requirements.txt`, then run one real revision before trusting it. If a
+parameter is rejected, check it against the `claude-api` skill rather than the model's
+training prior. Do not add `temperature`, `top_p`, `top_k` or `budget_tokens` - Opus 5
+returns 400 for all four.
+
 ### A free OpenRouter route returns empty or reasoning-only content instead of an answer
 Cause: **not the model ignoring instructions** - that is what this entry used to say and
 it was wrong. Measured 2026-08-07 by replaying a failing request: `finish_reason: "error"`

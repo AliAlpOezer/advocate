@@ -4,10 +4,31 @@ Last updated: 2026-08-07
 
 ## Current focus
 
-Phase C (tailored CV/cover-letter drafting, run by hand as `advocate-data`'s
-`cv-drafter` skill) is underway; first validation run complete. CSS → design system
-and HTML → Jinja templates remain queued behind it, per the 2026-08-02 phase reorder
-below.
+**Whole-system architecture accepted 2026-08-07: `three-loop-architecture.md`.** Read it
+before touching the hunt, the drafter or anything that sends. It is the routing target for
+"how do these fit together" and it supersedes `advocate-system-concept.md`'s component
+sketch where they disagree (the knowledge-base and eval designs there are unchanged).
+
+Three loops, one store, one knowledge base; the loops never call each other, they hand
+work over by writing a record. Nine findings, three of them defects in what is already
+built. Alp settled the three open decisions the same day: portal credentials go to
+Postgres and never into `applications/`; the record state machine moves to Postgres when
+the submitter is built, artifacts stay in git; and the existing draft→review loop gets
+closed before the irreversible send component is added.
+
+**F1, F3 and F4 are built and tested, same day** — approval bound to an artifact
+fingerprint, reject split from revise with the reason captured over Telegram, and the
+`claude-opus-5` escalation tier with a cache breakpoint on the 85 KB corpus. 16 Python
+tests and 9 TypeScript ones pass; `assertSendable` has coverage for the first time.
+Detail, including the two silent-success traps found while building it, is in
+`three-loop-architecture.md` §Built. **Nothing is deployed** — the box still needs the
+venv, the remaining five OpenRouter keys, `ANTHROPIC_API_KEY`, and Bucket 2's chat id.
+
+Next: **F2**, channel resolution at selection time, then components 1b and 4.
+
+Phase C (tailored CV/cover-letter drafting) is underway; first validation run complete.
+CSS → design system and HTML → Jinja templates remain queued behind it, per the
+2026-08-02 phase reorder below.
 
 ## The objective, restated by Alp 2026-07-31 — read this before writing any document
 

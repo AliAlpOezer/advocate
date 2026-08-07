@@ -16,9 +16,11 @@ each one has to fail here rather than an hour into a real draft.
 
 from __future__ import annotations
 
+import os
 import shutil
 import sys
 import tempfile
+from dataclasses import replace
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
@@ -28,7 +30,16 @@ from langchain_core.messages import AIMessage  # noqa: E402
 import advocate.render.build_pdf as build_pdf  # noqa: E402
 from advocate.apply.documents import body_of, normalise_body, splice_body  # noqa: E402
 from advocate.apply.graph import build_graph  # noqa: E402
-from advocate.apply.stages import CLAIMS_USED, CV, LETTER, STRATEGY, TEMPLATE_SLUG, Application  # noqa: E402
+from advocate.apply.providers import default_chain  # noqa: E402
+from advocate.apply.stages import (  # noqa: E402
+    CLAIMS_USED,
+    CV,
+    DRAFTING_STAGES,
+    LETTER,
+    STRATEGY,
+    TEMPLATE_SLUG,
+    Application,
+)
 
 TEMPLATE_HTML = """<!doctype html>
 <html lang="de">
@@ -329,6 +340,110 @@ def test_a_whole_document_sent_to_write_document_is_accepted(tmp: Path) -> None:
     written = app.read(CV)
     assert "/* theirs */" not in written, "the model's shell must not replace the house one"
     assert GOOD_CV_BODY.strip().splitlines()[0].strip() in written
+
+
+def test_a_revision_redrafts_instead_of_skipping_finished_stages(tmp: Path) -> None:
+    """The resume shortcut is right for a retry and catastrophic for a revision.
+
+    A stage is skipped when its `problems()` are empty, which is what makes a
+    crashed run resume where it stopped. But a draft that reached Alp has no
+    problems by definition - passing every mechanical check is how it got in
+    front of him - so applying the same rule to a redraft would skip all four
+    stages, re-render the document he rejected, and report a successful revision.
+    """
+    app = make_repo(tmp)
+    run(app, StubChat(script_for(app.slug)))  # first draft: everything now on disk
+
+    revised = replace(app, revision_reason="Zu generisch, der Bezug zur Stelle fehlt.")
+    chat = StubChat(script_for(app.slug))
+    final = run(revised, chat)
+
+    assert not final.get("failed"), final.get("failed")
+    assert not any(s["skipped"] for s in final["stages"]), [s["stage"] for s in final["stages"] if s["skipped"]]
+    assert final["turns"] == 4, final["turns"]
+
+
+def test_a_revision_that_writes_nothing_fails_rather_than_reporting_success(tmp: Path) -> None:
+    """The silent-success shape, in the one place the file checks cannot see it.
+
+    Every check passes before the model does anything, so "no problems" is not
+    evidence of work here. A model that reads the brief, agrees, and writes
+    nothing has to fail the stage - otherwise the pipeline re-renders the
+    rejected document and hands Alp back exactly what he sent away.
+    """
+    app = make_repo(tmp)
+    run(app, StubChat(script_for(app.slug)))
+
+    revised = replace(app, revision_reason="Der zweite Absatz stimmt so nicht.")
+    chat = StubChat(["Ich habe das geprueft, die Unterlagen passen bereits."] * 10)
+    final = run(revised, chat)
+
+    assert final.get("failed") == "analyse", final.get("failed")
+    record = stage(final, "analyse")
+    assert not record["ok"]
+    assert record["problems"], "the stage must say why it failed"
+    assert "redraft" in record["problems"][0]
+    # It pushed back rather than accepting the first refusal.
+    assert record["nudges"] > 0
+
+
+def test_the_revision_brief_leads_every_stage_task(tmp: Path) -> None:
+    app = replace(make_repo(tmp), revision_reason="Bitte den Munich-Bezug staerker machen.")
+    for stage_def in DRAFTING_STAGES:
+        task = stage_def.task_for(app)
+        assert task.startswith("=== THIS IS A REDRAFT ==="), stage_def.name
+        assert "Munich-Bezug" in task, stage_def.name
+    # And no brief at all when there is nothing to say - an empty redraft banner
+    # would tell a first draft it is correcting something that never happened.
+    first = replace(app, revision_reason="")
+    assert not DRAFTING_STAGES[0].task_for(first).startswith("===")
+
+
+def test_the_paid_tier_is_reachable_only_by_asking_for_it() -> None:
+    """Escalation is opt-in, never a fallback, and never fatal when unavailable."""
+    saved = os.environ.get("ANTHROPIC_API_KEY")
+    try:
+        os.environ["ANTHROPIC_API_KEY"] = "sk-ant-test"
+
+        # A normal draft never touches it, however the free rungs fail.
+        assert all(t.provider != "anthropic" for t in default_chain())
+
+        # A revision puts it on top, and keeps the free rungs underneath so an
+        # exhausted key degrades the draft instead of losing it.
+        escalated = default_chain(escalate=1)
+        assert escalated[0].provider == "anthropic"
+        assert escalated[0].model == "claude-opus-5"
+        assert [t.provider for t in escalated[1:]] == ["openrouter", "openrouter"]
+
+        # No key: still a chain, just not the one asked for.
+        del os.environ["ANTHROPIC_API_KEY"]
+        assert all(t.provider != "anthropic" for t in default_chain(escalate=1))
+    finally:
+        if saved is None:
+            os.environ.pop("ANTHROPIC_API_KEY", None)
+        else:
+            os.environ["ANTHROPIC_API_KEY"] = saved
+
+
+def test_the_corpus_is_marked_as_a_cache_breakpoint_for_anthropic_only() -> None:
+    """The 85 KB corpus is re-sent every turn; on the paid rung that has to cache.
+
+    Caching is a prefix match, so this also checks the volatile half stays
+    *after* the breakpoint - a task message pulled into the cached block would
+    make every application a fresh cache entry and cost more than it saves.
+    """
+    from langchain_core.messages import HumanMessage, SystemMessage
+
+    from advocate.apply.providers import _cacheable
+
+    messages = [SystemMessage(content="CORPUS"), HumanMessage(content="the task")]
+    marked = _cacheable(messages)
+
+    assert marked[0].content == [
+        {"type": "text", "text": "CORPUS", "cache_control": {"type": "ephemeral"}}
+    ]
+    assert marked[1].content == "the task", "the volatile turn must stay unmarked"
+    assert messages[0].content == "CORPUS", "the caller's messages must not be mutated"
 
 
 def test_document_helpers() -> None:

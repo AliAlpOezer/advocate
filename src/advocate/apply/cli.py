@@ -46,6 +46,19 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument("--report", help="where to write the JSON run report")
     p.add_argument("--skill-dir", help="defaults to <repo>/.claude/skills/cv-drafter")
     p.add_argument(
+        "--tier",
+        type=int,
+        default=0,
+        help="0 drafts on the free chain; above 0 puts the paid Anthropic rung on top "
+        "(only ever set by the driver from a revision Alp asked for)",
+    )
+    p.add_argument(
+        "--revision-reason-file",
+        help="a file holding, verbatim, what Alp said was wrong with the previous draft. "
+        "A file rather than an argument because it is free text he typed into Telegram: "
+        "arbitrary length, newlines and umlauts, on two hosts that quote argv differently",
+    )
+    p.add_argument(
         "--max-turns",
         type=int,
         default=None,
@@ -64,14 +77,37 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     skill_dir = Path(args.skill_dir) if args.skill_dir else repo / ".claude" / "skills" / "cv-drafter"
 
+    revision_reason = ""
+    if args.revision_reason_file:
+        reason_path = Path(args.revision_reason_file)
+        if not reason_path.is_file():
+            print(
+                f"--revision-reason-file points at {reason_path}, which does not exist. "
+                "Refusing to redraft: a revision without the reason regenerates the document "
+                "Alp rejected, and on the escalated tier it does so at a real cost.",
+                file=sys.stderr,
+            )
+            return 2
+        revision_reason = reason_path.read_text(encoding="utf-8").strip()
+
+    chain = default_chain(escalate=args.tier)
     keys = openrouter_keys()
-    if not keys:
+    if not chain:
         print(
-            "no OPENROUTER_API_KEY (or _2.._7) in the environment. The drafting chain has "
-            "nothing to authenticate with; refusing to start rather than failing per turn.",
+            "the drafting chain is empty - no OPENROUTER_API_KEY (or _2.._7) and no "
+            "ANTHROPIC_API_KEY. Refusing to start rather than failing per turn.",
             file=sys.stderr,
         )
         return 2
+    if args.tier > 0 and chain[0].provider != "anthropic":
+        # Loud but not fatal: a revision that quietly reruns the same free model
+        # would look like the escalation happened and read as "the paid model is
+        # no better", which is the wrong conclusion to draw from a missing key.
+        print(
+            f"--tier {args.tier} asked for the escalated model but ANTHROPIC_API_KEY is not set; "
+            "redrafting on the free chain instead. The revision reason still applies.",
+            file=sys.stderr,
+        )
 
     started = time.time()
     report: dict = {
@@ -100,6 +136,7 @@ def main(argv: list[str] | None = None) -> int:
             title=args.title,
             url=args.url,
             posting_file=args.posting_file,
+            revision_reason=revision_reason,
         )
         # Built once each and reused: the corpus is ~86 KB and every stage of
         # every turn re-sends one of them.
@@ -109,7 +146,7 @@ def main(argv: list[str] | None = None) -> int:
         }
 
         sink: list[dict] = []
-        chat = ChainedChat(default_chain())
+        chat = ChainedChat(chain)
         pipeline = build_graph(
             chat, app, sink, lambda stage: corpus[stage.needs_skill],
             max_turns=args.max_turns, log=log,
@@ -118,8 +155,13 @@ def main(argv: list[str] | None = None) -> int:
         log(
             f"{len(corpus[True]):,} chars of grounding material preloaded "
             f"({len(corpus[False]):,} for stages that do not need the skill), "
-            f"{len(keys)} key(s), chain: {', '.join(t.model for t in chat.tiers)}"
+            f"{len(keys)} OpenRouter key(s), chain: {', '.join(t.model for t in chat.tiers)}"
         )
+        if revision_reason:
+            # Echoed into the journal because it is the one input to this run that
+            # came from a human rather than from the store, and a redraft that
+            # went wrong is diagnosed by reading what it was actually told.
+            log(f"revision {args.tier}, brief: {revision_reason[:300]}")
 
         final = pipeline.invoke(
             {"slug": args.slug, "turns": 0, "nudges": 0},

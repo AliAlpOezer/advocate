@@ -5,6 +5,21 @@ is to stop an agent from cheerfully re-proposing something already rejected.
 
 Prune aggressively: once a decision is so embedded it could never be revisited, delete it.
 
+### Secrets never enter `applications/`, and record state moves to Postgres
+Date: 2026-08-07 · Status: settled · Full reasoning in `three-loop-architecture.md` §Settled
+Two calls made together when the whole system was designed as one. **Portal account
+credentials go to a `portal_accounts` table in the tailnet-only Postgres**; the application
+folder gets a pointer (portal, account email, credential id) and nothing else. **Rejected:
+plaintext in `applications/<slug>/`,** which is what was originally asked for - that
+directory is git-committed and pushed to the box, so a password written there is in history
+permanently and deleting the file does not remove it. Also rejected: an encrypted file in
+the folder, which needs the key everywhere and duplicates the secret path.
+**The record state machine moves to Postgres when the submitter is built**, artifacts stay
+on the filesystem and in git. **Rejected: a lease field with CAS on `applications.json`** -
+enough for the duplicate-send guard alone, but leaves the four-store split and the
+data-repo-orchestrates-engine-repo inversion in place, and Postgres is already running.
+Cost accepted: the loop needs the box reachable, where today it degrades to laptop-local.
+
 ### Chrome is the only PDF renderer. Do not add a library for Linux.
 Date: 2026-08-06 · Status: settled
 `build_pdf.py` now resolves the browser off `PATH` (with an `ADVOCATE_CHROME_BIN`

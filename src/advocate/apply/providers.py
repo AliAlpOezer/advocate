@@ -106,6 +106,9 @@ FATAL_FOR_TIER = re.compile(
 )
 
 
+ANTHROPIC_MODEL = os.environ.get("ADVOCATE_ESCALATION_MODEL", "claude-opus-5")
+
+
 @dataclass(frozen=True)
 class Tier:
     """One rung of the chain: a provider, a model, and the keys to try on it."""
@@ -114,6 +117,11 @@ class Tier:
     model: str
     keys: tuple[str, ...]
     base_url: str = "https://openrouter.ai/api/v1"
+    # Which client to build. "openrouter" is the OpenAI-compatible route every
+    # free tier uses; "anthropic" is the paid escalation rung and is a different
+    # SDK, a different message shape and a different billing model, so it is
+    # named rather than inferred from the base_url.
+    provider: str = "openrouter"
 
 
 def openrouter_keys() -> tuple[str, ...]:
@@ -129,7 +137,21 @@ def openrouter_keys() -> tuple[str, ...]:
     return tuple(keys)
 
 
-def default_chain() -> list[Tier]:
+def anthropic_tier() -> Tier | None:
+    """The escalation rung, or None when there is no key to reach it with.
+
+    Returning None rather than raising is deliberate: a missing Anthropic key
+    should degrade a revision to "redrafted on the free chain", which is worse
+    than asked for but still an application. Refusing to run would leave the
+    record stuck at a tier nothing can serve.
+    """
+    key = os.environ.get("ANTHROPIC_API_KEY")
+    if not key:
+        return None
+    return Tier("anthropic", ANTHROPIC_MODEL, (key,), base_url="", provider="anthropic")
+
+
+def default_chain(escalate: int = 0) -> list[Tier]:
     """Smartest first. A tier is only reached when the one above cannot produce a turn.
 
     Nemotron 3 Ultra leads on measured evidence rather than reputation: it drove a
@@ -150,14 +172,82 @@ def default_chain() -> list[Tier]:
     a shared upstream can fail for both. That is accepted rather than solved: the
     alternatives are materially smaller, and this fallback exists to survive a rate
     limit, not to be a second opinion on German prose.
+
+    **`escalate > 0` puts the paid Anthropic rung on top**, which is what Alp
+    taps Revise for. It is deliberately *only* reachable that way:
+
+      - It is metered API billing, not the subscription that funds everything
+        else here, so it must never be arrived at by accident.
+      - It must not be a fallback for a provider error. A 502 from NVIDIA means
+        retry the free chain, not spend money - the failure has nothing to do
+        with the model's ability and everything to do with someone's capacity.
+        So it is prepended to the chain rather than appended to it: a run that
+        starts on Anthropic can fall back to free, and a run that starts free
+        can never fall *up*.
+
+    The free rungs stay underneath even on an escalated run, which is what makes
+    a missing or exhausted Anthropic key degrade to a worse draft rather than to
+    no draft.
     """
     keys = openrouter_keys()
-    return [
+    free = [
         Tier("openrouter", os.environ.get(
             "ADVOCATE_DRAFT_MODEL", "nvidia/nemotron-3-ultra-550b-a55b:free"), keys),
         Tier("openrouter-alt", os.environ.get(
             "ADVOCATE_DRAFT_MODEL_ALT", "nvidia/nemotron-3-super-120b-a12b:free"), keys),
     ]
+    if escalate <= 0:
+        return free
+    paid = anthropic_tier()
+    return ([paid] if paid else []) + free
+
+
+def _cacheable(messages: list[AnyMessage]) -> list[AnyMessage]:
+    """Mark the system prompt as a cache breakpoint, for Anthropic rungs only.
+
+    The preloaded corpus - SKILL.md, the dossier, claims.yaml - is about 85 KB,
+    it is byte-identical on every turn of a stage and identical again across
+    every application, and each turn re-sends all of it. Cached reads are a small
+    fraction of the input price, so on the paid rung this is the difference
+    between paying for the dossier once per stage and paying for it once per
+    turn.
+
+    Two properties make it work, and both are properties of *where* the marker
+    goes rather than of the marker itself. Caching is a prefix match, so the
+    stable bytes have to come first and everything volatile - the stage's task,
+    the revision reason, the conversation so far - has to come after the
+    breakpoint. That is exactly the message order the pipeline already builds, so
+    the only thing needed here is to mark the boundary.
+
+    Deliberately the default 5-minute TTL and no beta headers. A 1-hour TTL costs
+    a larger write premium and would need one; the win being captured is the
+    within-stage one, where turns are seconds apart. If a stage ever routinely
+    idles longer than that between turns, the TTL is the lever - measure first.
+
+    Non-system messages pass through untouched, and a system message that is
+    already in block form is left alone rather than rewritten.
+    """
+    from langchain_core.messages import SystemMessage
+
+    out: list[AnyMessage] = []
+    marked = False
+    for message in messages:
+        if not marked and isinstance(message, SystemMessage) and isinstance(message.content, str):
+            out.append(
+                SystemMessage(
+                    content=[
+                        {
+                            "type": "text",
+                            "text": message.content,
+                            "cache_control": {"type": "ephemeral"},
+                        }
+                    ]
+                )
+            )
+            marked = True
+            continue
+        out.append(message)
+    return out
 
 
 @dataclass
@@ -182,6 +272,9 @@ class ChainedChat:
         return self
 
     def _client(self, tier: Tier, key: str | None, tools: list) -> BaseChatModel:
+        if tier.provider == "anthropic":
+            return self._anthropic_client(tier, key, tools)
+
         from langchain_openai import ChatOpenAI
 
         effort = REASONING_EFFORT
@@ -196,6 +289,36 @@ class ChainedChat:
             # what is sent is what its docs describe. Both drafting models declare
             # `reasoning` in supported_parameters.
             extra_body={"reasoning": {"effort": effort}} if effort else {},
+        )
+        return model.bind_tools(tools) if tools else model
+
+    def _anthropic_client(self, tier: Tier, key: str | None, tools: list) -> BaseChatModel:
+        """The escalation rung. Three things here are deliberate and easy to undo by accident.
+
+        **No `temperature`.** Opus 5 rejects it, along with `top_p` and `top_k`,
+        with a 400. `ChainedChat.temperature` exists for the OpenRouter rungs and
+        is simply not forwarded here.
+
+        **No `thinking` and no effort parameter.** On Opus 5 thinking is on by
+        default and effort defaults to `high`, so the configuration Alp asked for
+        - Opus 5, high effort - is the one you get by passing neither. That is
+        also why nothing here guesses at the shape of an effort argument: the
+        only reason to add one later is to reach `xhigh`, and that is worth
+        verifying against the installed client rather than assuming.
+
+        **`max_tokens` is generous.** A drafting stage emits a whole document
+        body, and this ceiling covers thinking *and* the answer together - a
+        limit sized for the answer alone truncates mid-document, which reads as
+        a bad draft rather than as a configuration mistake.
+        """
+        from langchain_anthropic import ChatAnthropic
+
+        model = ChatAnthropic(
+            model=tier.model,
+            api_key=key,
+            max_tokens=16000,
+            timeout=TURN_TIMEOUT_SECONDS,
+            max_retries=0,  # classified and retried here, same as the other rungs
         )
         return model.bind_tools(tools) if tools else model
 
@@ -222,8 +345,9 @@ class ChainedChat:
                 label = f"{tier.id}[key {index + 1}/{len(keys)}] {tier.model}"
                 try:
                     client = self._client(tier, keys[index], bound)
+                    payload = _cacheable(messages) if tier.provider == "anthropic" else messages
                     reply = _call_with_deadline(
-                        lambda: client.invoke(messages), TURN_TIMEOUT_SECONDS
+                        lambda: client.invoke(payload), TURN_TIMEOUT_SECONDS
                     )
                 except Exception as exc:  # noqa: BLE001 - classified immediately below
                     text = f"{exc}"
