@@ -15,12 +15,29 @@ Fix: <what to do>
 <!-- Entries below. Delete one the moment the underlying cause is fixed for good —
      a stale gotcha sends agents down a dead path with full confidence. -->
 
-### `extract_skills()` returns `[]` for many/all postings on the default (free) provider
-Cause: free OpenRouter routes (`openai/gpt-oss-120b:free`) sometimes ignore instructions
-and return reasoning-only or empty content instead of the requested JSON; `extract.py`
-retries 3x then gives up and returns `[]` for that posting rather than failing the run.
-Fix: this is expected/handled behavior, not a bug to "fix" in extract.py. Run with
-`--provider anthropic` for reliable output if you need consistent extraction.
+### A free OpenRouter route returns empty or reasoning-only content instead of an answer
+Cause: **not the model ignoring instructions** - that is what this entry used to say and
+it was wrong. Measured 2026-08-07 by replaying a failing request: `finish_reason: "error"`
+inside an HTTP 200, all completion tokens spent on reasoning, no content, no tool call.
+The provider fails mid-generation and delivers the failure in a successful response, so a
+client checking only the status sees a model that declined to work.
+Fix: treat `finish_reason == "error"`, or a reply with neither content nor tool calls, as
+a provider failure and fail over. `apply/providers.py` does; `extract.py` does not - its
+3 retries are spent on a provider that already failed rather than on a different one.
+
+### A drafting stage runs many turns and writes nothing
+Cause: usually the entry above. Read `apply/state/draft-reports/<slug>-<ts>.json` first -
+`stages[]` names the stage that stopped and what was wrong with the folder, `attempts[]`
+names every provider and key tried.
+Fix: do **not** force the call with `tool_choice`. Tried 2026-08-07; it corrupts the
+argument on `nemotron-3-ultra` - `<br>` instead of newlines, truncated at 8,192 chars.
+
+### A drafting turn runs far longer than the configured client timeout
+Cause: `ChatOpenAI(timeout=...)` is an HTTP read timeout, not a wall clock, and any byte
+on the socket resets it. Measured: 20+ minutes against a 600s client; 53,893s once.
+Fix: `ADVOCATE_TURN_TIMEOUT_SECONDS` (default 900) is enforced by the chain on a daemon
+thread. Do not raise the driver's `APPLY_DRAFT_TIMEOUT_SECONDS` instead - that kills
+every stage at once rather than failing one over.
 
 ### Re-running with the same query silently returns stale/incomplete results
 Cause: `cli.py` derives `thread_id` from `keywords|location|geo_id` (or `--thread`) and
