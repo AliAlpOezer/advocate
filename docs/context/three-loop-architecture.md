@@ -49,7 +49,7 @@ Three loops, one store, one knowledge base. The loops never call each other.
 | # | Component | Owns | Autonomy | Where it lives |
 |---|---|---|---|---|
 | 1 | **Hunt** | Fetch, dedup, score, shortlist | Autonomous, 3h timer | `advocate-data/job-search/` (TS) |
-| 1b | **Channel resolver** | Follow the listing to the real apply surface; classify it | Autonomous, at selection | **new** |
+| ~~1b~~ | ~~**Channel resolver**~~ | Dropped 2026-08-07 - the gate's "Listing gone" button covers it (F2) | - | not built |
 | 2 | **Drafter** | Analyse, draft CV + letter, map claims, render PDFs | Autonomous behind the gate | `advocate/src/advocate/apply/` (Py), driven by `advocate-data/apply/draft.ts` |
 | 2b | **Verifier** | Mechanical check of the artifacts | Autonomous | `advocate-data/apply/verify.ts` |
 | 3 | **Gate** | Show the rendered PDFs, take approve / revise, capture the reason | Human | `advocate-data/apply/bot.ts` |
@@ -114,7 +114,7 @@ v2. Nothing in the system notices.
 refuse on mismatch. Roughly fifteen lines. It is cheap now and unfixable-in-practice once
 the submitter is live, because the failure is silent and looks like a successful send.
 
-### F2. The apply channel is discovered too late, and that is a pipeline-shape bug.
+### F2. The apply channel is discovered too late. ~~Fix at selection~~ - answered by a button, 2026-08-07.
 
 `leads.jsonl` stores the LinkedIn or StepStone **listing** URL (32 of 34 leads are
 `de.linkedin.com`), not the ATS behind the Apply button. Personio, SuccessFactors,
@@ -124,11 +124,26 @@ Today that only becomes knowable at send time, which means a posting with no rea
 channel can consume a full drafting run and a slot in Alp's review queue before anyone
 finds out. Both of those are the scarce resources.
 
-**Fix:** a `resolve_channel` step at *selection* time (component 1b). Follow the listing,
-classify the apply surface, write `channel` and `applyUrl` onto the record. On `unknown`,
-defer the posting loudly rather than guessing - the same rule that killed the Indeed
-link-scan fallback and the JSON-LD-less draft. This is a re-ordering, not extra work: the
-submitter needs the classification either way, and doing it first makes selection honest.
+**Proposed fix, not taken:** a `resolve_channel` step at *selection* time (component 1b).
+Follow the listing, classify the apply surface, write `channel` and `applyUrl` onto the
+record, and defer loudly on `unknown`.
+
+**Settled 2026-08-07: not built. A button in the gate does the job instead.** Alp's call:
+a dead listing is not worth a component. The review card already carries the posting URL;
+when he taps it and gets nothing, a **🚫 Listing gone** button drops the record to
+`withdrawn` and takes no action. Built the same day, alongside `/gone <slug>`.
+
+The tradeoff being accepted is real and worth naming: a vanished posting still consumes a
+full drafting run and a slot in the review queue, which is exactly what F2 argued against.
+What changed is the price of clearing it - one tap, at a moment Alp is already reading the
+card - against a resolver that has to classify Personio, SuccessFactors, Workday,
+Greenhouse and plain email correctly, and be maintained as each of them changes.
+
+**The trigger to revisit is now measurable rather than a guess.** Every drop writes
+`Listing gone <stamp>` into the record's notes, so the rate is greppable. If dead listings
+turn out to be common, that is the evidence for resolving the channel at selection after
+all. The submitter still needs the classification - it just does it at send time, for
+postings already known to be live, which is strictly fewer of them.
 
 ### F3. Rejection carries no reason, so escalation regenerates the same document.
 
@@ -236,7 +251,6 @@ backup the repo is currently providing.
 | Component | Tier | Why |
 |---|---|---|
 | Hunt | Autonomous | Idempotent; worst case is a bad ranking |
-| Channel resolver | Autonomous | Read-only; worst case is a deferred posting |
 | Drafter | Autonomous behind the gate | Produces a proposal; costs tokens; reversible |
 | Verifier | Autonomous | Fails closed |
 | Gate | Human, always | The one place the irreversible action is authorised |
@@ -270,8 +284,9 @@ The ask is largely a description of what exists. The genuinely new work is small
 | Check the documents are good | Built. Stage gates plus independent `verify.ts` |
 | Set a "ready to review" flag | Built. `status: pending_review` |
 | Telegram message with the PDFs and two buttons | Built. `bot.ts` sends `sendDocument` plus an inline keyboard |
-| Revise → rerun on Opus 5 high effort | **New.** F3 + F4 |
-| Third loop applies on the platform | **New.** F2 + F8 |
+| Revise → rerun on Opus 5 high effort | Built 2026-08-07. F3 + F4 |
+| Listing is gone → take no action | Built 2026-08-07. F2 |
+| Third loop applies on the platform | **New.** F8 |
 | Save portal credentials | **New,** and see F7 |
 | "Application to offering N has been made" | **New.** Needs `ref` (F5) |
 
@@ -376,19 +391,25 @@ duplicate-send guard the last thing trusted rather than the first.
 **Cost accepted:** the loop now needs the box reachable to run at all, where today it
 degrades to laptop-local. Mitigated by the nightly `pg_dump`, not eliminated.
 
+### A dead listing is a button, not a component
+See F2. The review card carries the posting URL; when it opens nothing, **🚫 Listing gone**
+drops the record to `withdrawn` and nothing is sent. **Rejected: component 1b**, a
+`resolve_channel` step at selection time. It buys back a drafting run and a queue slot per
+dead posting, at the cost of classifying five ATS vendors correctly and forever.
+**Cost accepted:** a vanished posting is still drafted before anyone finds out. The drop
+rate is greppable in the notes, and if it turns out to be high, 1b comes back with evidence.
+
 ### Build order: close the existing loop before adding an irreversible component
 F1 (artifact hash binding), F3 (split reject/revise, capture the reason) and F4 (the
-Opus 5 tier with prompt caching) come first, as one bucket. Then F2 (channel resolution at
-selection), then components 1b and 4.
+Opus 5 tier with prompt caching) come first, as one bucket. Then deploy, then component 4.
 **Rejected: going straight to the submitter,** accepting F1 and F5 as gaps to close along
 the way. Fastest to an end-to-end application and the highest risk of exactly the two
 silent failures this record exists to prevent.
 
 ## Open questions
 
-1. **Channel build order.** Email and portal in parallel was settled 2026-08-05. F2 may
-   change that: once channels are resolved at selection, the first few real postings tell
-   you which adapter to build first instead of guessing. Re-ask after the first resolver
-   run.
+1. **Channel build order.** Email and portal in parallel was settled 2026-08-05. With F2
+   answered by a button there is no resolver run to learn from, so this is now decided by
+   the first few postings Alp actually reaches: build the adapter for whatever they use.
 2. **Escalation ceiling.** How many revise rounds before a posting is dropped, and whether
    tier 1 ever gets a second attempt. Not blocking; defaulting to 2 rounds.
