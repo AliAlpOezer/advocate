@@ -9,10 +9,14 @@ replaces honoured neither:
   - **The exit code is honest.** Non-zero whenever no application was produced.
     OpenCode exited 0 on a provider stream error, which is what made its whole
     failover chain unreachable and cost two runs on 2026-08-06.
-  - **The report is the real signal.** Even on success it records the turns
-    taken, every tool call, and every provider fallback, so "the model made zero
-    tool calls" is a value in a file rather than something inferred afterwards
-    from an empty folder.
+  - **The report is the real signal.** Even on success it records every stage,
+    every tool call and every provider fallback, so "the model made zero tool
+    calls" is a value in a file rather than something inferred afterwards from an
+    empty folder.
+
+Success is not judged here by counting tool calls any more. Each stage decides
+for itself by reading its own output back off disk, so this only has to report
+which stage stopped and what was still wrong with the folder when it did.
 """
 
 from __future__ import annotations
@@ -24,12 +28,11 @@ import time
 from pathlib import Path
 
 from dotenv import load_dotenv
-from langchain_core.messages import HumanMessage, SystemMessage
 
-from advocate.apply.graph import MAX_TURNS, build_graph
-from advocate.apply.prompt import build_system_prompt, build_task_prompt
+from advocate.apply.graph import build_graph
+from advocate.apply.prompt import build_system_prompt
 from advocate.apply.providers import ChainedChat, default_chain, openrouter_keys
-from advocate.apply.tools import build_tools
+from advocate.apply.stages import Application
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -42,7 +45,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument("--posting-file", required=True, help="repo-relative path to posting.md")
     p.add_argument("--report", help="where to write the JSON run report")
     p.add_argument("--skill-dir", help="defaults to <repo>/.claude/skills/cv-drafter")
-    p.add_argument("--max-turns", type=int, default=MAX_TURNS)
+    p.add_argument(
+        "--max-turns",
+        type=int,
+        default=None,
+        help="override every stage's own turn cap (default: each stage decides)",
+    )
     return p.parse_args(argv)
 
 
@@ -72,80 +80,87 @@ def main(argv: list[str] | None = None) -> int:
         "finished": False,
         "turns": 0,
         "keysAvailable": len(keys),
+        "stages": [],
         "toolCalls": [],
         "attempts": [],
         "summary": "",
         "error": None,
     }
 
+    def log(message: str) -> None:
+        print(f"[draft-agent] {args.slug}: {message}", file=sys.stderr)
+
+    chat: ChainedChat | None = None
+
     try:
-        system = build_system_prompt(repo, skill_dir)
-        task = build_task_prompt(
+        app = Application(
+            repo=repo,
             slug=args.slug,
             company=args.company,
             title=args.title,
             url=args.url,
             posting_file=args.posting_file,
         )
+        # Built once each and reused: the corpus is ~86 KB and every stage of
+        # every turn re-sends one of them.
+        corpus = {
+            True: build_system_prompt(repo, skill_dir, include_skill=True),
+            False: build_system_prompt(repo, skill_dir, include_skill=False),
+        }
 
         sink: list[dict] = []
-        tools = build_tools(repo, args.slug, sink)
-        llm = ChainedChat(default_chain()).bind_tools(tools)
-        app = build_graph(llm, tools, sink, repo)
-
-        print(
-            f"[draft-agent] {args.slug}: {len(system):,} chars of grounding material preloaded, "
-            f"{len(keys)} key(s), chain: {', '.join(t.model for t in llm.tiers)}",
-            file=sys.stderr,
+        chat = ChainedChat(default_chain())
+        pipeline = build_graph(
+            chat, app, sink, lambda stage: corpus[stage.needs_skill],
+            max_turns=args.max_turns, log=log,
         )
 
-        final = app.invoke(
-            {
-                "messages": [SystemMessage(content=system), HumanMessage(content=task)],
-                "slug": args.slug,
-                "turns": 0,
-                "finished": False,
-                "nudges": 0,
-            },
-            # The loop already bounds itself with MAX_TURNS; this is the backstop
-            # for a pathological tools/agent ping-pong, and each super-step is one
-            # node, so it is generous on purpose.
-            {"recursion_limit": args.max_turns * 2 + 10},
+        log(
+            f"{len(corpus[True]):,} chars of grounding material preloaded "
+            f"({len(corpus[False]):,} for stages that do not need the skill), "
+            f"{len(keys)} key(s), chain: {', '.join(t.model for t in chat.tiers)}"
+        )
+
+        final = pipeline.invoke(
+            {"slug": args.slug, "turns": 0, "nudges": 0},
+            # One super-step per node. Five stages plus the conditional edges
+            # between them, with room for a routing mistake to surface as a
+            # recursion error rather than a hang.
+            {"recursion_limit": 50},
         )
 
         report["turns"] = final.get("turns", 0)
-        report["finished"] = bool(final.get("finished"))
-        report["summary"] = final.get("summary", "")
+        report["nudges"] = final.get("nudges", 0)
+        report["stages"] = final.get("stages", [])
         report["toolCalls"] = final.get("tool_calls", [])
         report["attempts"] = final.get("attempts", [])
-        report["nudges"] = final.get("nudges", 0)
-        tail = final["messages"][-1]
-        report["lastMessage"] = str(getattr(tail, "content", ""))[:2000]
+        report["lastMessage"] = final.get("lastMessage", "")[:2000]
 
-        writes = [c for c in report["toolCalls"] if c["tool"] == "write_file" and c["ok"]]
-        renders = [c for c in report["toolCalls"] if c["tool"] == "render_pdf" and c["ok"]]
-
-        # Success is judged on evidence of work, not on the loop having returned.
-        # verify.ts still has the last word on whether the content is any good;
-        # this only refuses to claim a draft happened when nothing was written.
-        if not report["toolCalls"]:
-            report["error"] = (
-                "the model made no tool calls at all - it never read the posting or wrote "
-                "anything. Treat this as a provider or prompt failure, not a bad draft."
-            )
-        elif not writes:
-            report["error"] = f"no file was written ({len(report['toolCalls'])} tool calls made)"
-        elif not renders:
-            report["error"] = "no PDF was rendered"
-        elif not report["finished"]:
-            report["error"] = (
-                f"the loop stopped after {report['turns']} turns without calling finish"
-            )
+        # The stage records already carry the verdict. Anything else here would be
+        # a second opinion computed from weaker evidence than the one the stage
+        # formed by reading its own output back.
+        failed = final.get("failed")
+        if failed:
+            record = next((s for s in report["stages"] if s["stage"] == failed), None)
+            problems = "; ".join(record["problems"]) if record else "no detail recorded"
+            report["error"] = f"stage '{failed}' did not finish: {problems}"
         else:
             report["ok"] = True
+            report["finished"] = True
+
+        report["summary"] = "\n".join(
+            f"{s['stage']}: {'skipped, already done' if s.get('skipped') else 'ok' if s['ok'] else 'FAILED'}"
+            f" ({s['turns']} turns, {s['seconds']}s)"
+            + (f" - {'; '.join(s['problems'])}" if s["problems"] else "")
+            for s in report["stages"]
+        )
 
     except Exception as exc:  # noqa: BLE001 - the report is the contract, not the traceback
         report["error"] = f"{type(exc).__name__}: {exc}"
+        # The chain drains its attempt log into graph state on a *successful*
+        # turn, so a run that died inside the chain would otherwise report an
+        # empty `attempts` while the whole story sat on the chat object.
+        report["attempts"] = report["attempts"] or list(chat.attempts if chat else [])
         if isinstance(exc, KeyboardInterrupt):
             raise
     finally:
@@ -156,13 +171,11 @@ def main(argv: list[str] | None = None) -> int:
             out.write_text(json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8")
 
     for line in report["attempts"]:
-        print(f"[draft-agent] {line}", file=sys.stderr)
-    print(
-        f"[draft-agent] {args.slug}: {'ok' if report['ok'] else 'FAILED'} in "
-        f"{report['durationSeconds']}s, {report['turns']} turns, "
-        f"{len(report['toolCalls'])} tool calls"
-        + (f" - {report['error']}" if report["error"] else ""),
-        file=sys.stderr,
+        log(line)
+    log(
+        f"{'ok' if report['ok'] else 'FAILED'} in {report['durationSeconds']}s, "
+        f"{report['turns']} turns, {len(report['toolCalls'])} tool calls"
+        + (f" - {report['error']}" if report["error"] else "")
     )
     if report["summary"]:
         print(report["summary"])

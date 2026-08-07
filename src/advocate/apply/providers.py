@@ -33,16 +33,68 @@ It did not have a case for what actually happened:
 from __future__ import annotations
 
 import os
+import queue
 import re
+import threading
 import time
 from dataclasses import dataclass, field
 
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AnyMessage, BaseMessage
 
-# Free-tier OpenRouter measured 53s for a four-turn tool loop on 2026-08-06.
-# A single turn taking more than this is a stuck upstream, not a slow model.
-TURN_TIMEOUT_SECONDS = 300
+# Free-tier OpenRouter measured 53s for a four-turn tool loop on 2026-08-06, but
+# those turns were a few hundred bytes each. The two drafting stages emit a whole
+# document body - roughly 5k tokens - so the bound has to cover generation at a
+# free route's throughput, not just a handshake. 900s is about 6 tokens/second:
+# generous enough not to kill a slow but working draft, tight enough that a stage
+# gives up long before the driver kills the whole run.
+TURN_TIMEOUT_SECONDS = int(os.environ.get("ADVOCATE_TURN_TIMEOUT_SECONDS", "900"))
+
+# Both drafting models are reasoning models and both declare `reasoning` in their
+# supported parameters, so effort is a lever available here. It is **off by
+# default**: the run that first drafted an application end to end ran at the
+# provider's default, and grounding against a 330-line dossier is the one thing
+# worth spending latency on. `minimal` is the knob to reach for if turn latency
+# becomes the binding constraint - the 2026-08-06 OpenCode probe ran it (as
+# `--variant minimal`) and grounding held, but that was a three-claim toy.
+REASONING_EFFORT = os.environ.get("ADVOCATE_REASONING_EFFORT", "")
+
+
+def _call_with_deadline(call, seconds: int):
+    """Run `call` on a daemon thread and give up on it after `seconds`.
+
+    `ChatOpenAI(timeout=...)` is not a wall-clock bound on this route. Measured
+    2026-08-07: a drafting turn ran past 20 minutes against a client configured
+    for 600s, and the run the day before spent 53,893 seconds without a single
+    turn completing. An HTTP read timeout is reset by anything arriving on the
+    socket, so a provider that trickles or keeps the connection alive while it
+    thinks is never late by that definition - and the only remaining bound was
+    the driver killing the whole subprocess, which loses every stage at once.
+
+    The thread is abandoned rather than cancelled, because a blocking socket read
+    cannot be interrupted from outside. It is a daemon, so it cannot hold the
+    process open, and the run is a oneshot: one leaked thread costs a socket for
+    the rest of a run that is already failing over.
+    """
+    box: queue.Queue = queue.Queue(maxsize=1)
+
+    def work() -> None:
+        try:
+            box.put(("ok", call()))
+        except BaseException as exc:  # noqa: BLE001 - re-raised on the caller's thread
+            box.put(("error", exc))
+
+    threading.Thread(target=work, daemon=True).start()
+    try:
+        kind, value = box.get(timeout=seconds)
+    except queue.Empty:
+        raise TimeoutError(
+            f"no reply after {seconds}s (the client's own timeout does not bound this)"
+        ) from None
+    if kind == "error":
+        raise value
+    return value
+
 
 RATE_LIMITED = re.compile(
     r"\b429\b|rate[ _-]?limit|too many requests|resource[ _-]?exhausted|quota", re.I
@@ -83,17 +135,28 @@ def default_chain() -> list[Tier]:
     Nemotron 3 Ultra leads on measured evidence rather than reputation: it drove a
     four-turn file-tool loop correctly in 53s on OpenRouter, and its free route
     carries a 1M context - larger than the paid one - so the whole dossier fits.
-    minimax-m3 is the standing alternative recorded from the 2026-08-06 probe,
-    where it was clean on the German grounding task with the best idiom of the
-    field, and it is a genuinely different model rather than another route to the
-    same upstream that failed today.
+    Set `ADVOCATE_DRAFT_MODEL` to the same id without `:free` to run it paid; that
+    is the intended move once OpenRouter credit exists, and nothing else changes.
+
+    **The second tier is no longer minimax.** `minimax/minimax-m3:free` was the
+    standing alternative from the 2026-08-06 probe, and on 2026-08-07 it answered
+    404: "This model is unavailable for free. The paid version is available now."
+    OpenRouter's catalogue has no free minimax variant at all any more, so the
+    fallback was a dead id the chain could only discover by spending a tier on it.
+
+    Its replacement is the largest free model left that declares tool support and
+    holds the ~25k-token preloaded corpus with room to work. It is the same family
+    as tier 1, which costs the "genuinely different model" property minimax had -
+    a shared upstream can fail for both. That is accepted rather than solved: the
+    alternatives are materially smaller, and this fallback exists to survive a rate
+    limit, not to be a second opinion on German prose.
     """
     keys = openrouter_keys()
     return [
         Tier("openrouter", os.environ.get(
             "ADVOCATE_DRAFT_MODEL", "nvidia/nemotron-3-ultra-550b-a55b:free"), keys),
         Tier("openrouter-alt", os.environ.get(
-            "ADVOCATE_DRAFT_MODEL_ALT", "minimax/minimax-m3:free"), keys),
+            "ADVOCATE_DRAFT_MODEL_ALT", "nvidia/nemotron-3-super-120b-a12b:free"), keys),
     ]
 
 
@@ -114,12 +177,14 @@ class ChainedChat:
     _tools: list = field(default_factory=list)
 
     def bind_tools(self, tools: list) -> "ChainedChat":
+        """The default tool set. Stages pass their own to `invoke` instead."""
         self._tools = tools
         return self
 
-    def _client(self, tier: Tier, key: str | None) -> BaseChatModel:
+    def _client(self, tier: Tier, key: str | None, tools: list) -> BaseChatModel:
         from langchain_openai import ChatOpenAI
 
+        effort = REASONING_EFFORT
         model = ChatOpenAI(
             model=tier.model,
             temperature=self.temperature,
@@ -127,11 +192,24 @@ class ChainedChat:
             api_key=key or "unset",
             timeout=TURN_TIMEOUT_SECONDS,
             max_retries=0,  # retries are this class's job, and they are classified
+            # OpenRouter's own shape, passed through rather than translated, so
+            # what is sent is what its docs describe. Both drafting models declare
+            # `reasoning` in supported_parameters.
+            extra_body={"reasoning": {"effort": effort}} if effort else {},
         )
-        return model.bind_tools(self._tools) if self._tools else model
+        return model.bind_tools(tools) if tools else model
 
-    def invoke(self, messages: list[AnyMessage]) -> BaseMessage:
-        """One assistant turn, or an exception once every tier is spent."""
+    def invoke(self, messages: list[AnyMessage], tools: list | None = None) -> BaseMessage:
+        """One assistant turn, or an exception once every tier is spent.
+
+        `tools` is per call rather than bound once, because each stage of the
+        pipeline offers a different set - the stage that writes the CV has no way
+        to write the cover letter, and that is enforced by what it is handed.
+
+        **There is deliberately no `tool_choice` here.** Forcing the call was tried
+        and is measurably harmful on this model - see the note in `graph.py`.
+        """
+        bound = self._tools if tools is None else tools
         last_error: Exception | None = None
 
         for tier in self.tiers:
@@ -143,7 +221,10 @@ class ChainedChat:
                 index = (self.cursor + rotations) % len(keys)
                 label = f"{tier.id}[key {index + 1}/{len(keys)}] {tier.model}"
                 try:
-                    reply = self._client(tier, keys[index]).invoke(messages)
+                    client = self._client(tier, keys[index], bound)
+                    reply = _call_with_deadline(
+                        lambda: client.invoke(messages), TURN_TIMEOUT_SECONDS
+                    )
                 except Exception as exc:  # noqa: BLE001 - classified immediately below
                     text = f"{exc}"
                     last_error = exc
@@ -167,6 +248,31 @@ class ChainedChat:
                         continue
 
                     self.attempts.append(f"{label}: transient again ({text[:160]}), next tier")
+                    break
+
+                # A 200 response is not a turn. Measured 2026-08-07 by replaying
+                # the claims stage's exact request: `finish_reason: "error"`,
+                # 2,464 completion tokens all of them reasoning, no content and no
+                # tool call - an upstream failure delivered inside a successful
+                # HTTP response. Accepting it burned five turns a run and looked
+                # exactly like a model refusing to work, which is the same shape
+                # of bug as OpenCode exiting 0 on a stream error. It is a provider
+                # failure and is classified as one, so the chain falls over
+                # instead of nudging a model that never got the request.
+                finish = (getattr(reply, "response_metadata", None) or {}).get("finish_reason")
+                usable = bool(getattr(reply, "tool_calls", None)) or bool(
+                    str(getattr(reply, "content", "") or "").strip()
+                )
+                if finish == "error" or not usable:
+                    last_error = RuntimeError(
+                        f"unusable reply: finish_reason={finish!r}, no content and no tool call"
+                    )
+                    if not retried_transient:
+                        retried_transient = True
+                        self.attempts.append(f"{label}: {last_error}, retrying once")
+                        time.sleep(5)
+                        continue
+                    self.attempts.append(f"{label}: {last_error} again, next tier")
                     break
 
                 # Success. Stick to this key: the pool is consumed in order rather

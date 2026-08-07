@@ -25,12 +25,10 @@ from pathlib import Path
 SYSTEM_HEADER = """\
 You are drafting one job application, headless, on behalf of Ali Alp Oezer.
 
-Below, in full, are three documents. Treat them as your standing instructions and
-your only source of facts:
-
-  1. the cv-drafter skill, which is how this job is done
-  2. EVIDENCE_DOSSIER.md, the graded evidence
-  3. claims/claims.yaml, the claim store
+Below, in full, are the documents you work from. Treat them as your standing
+instructions and your only source of facts: the graded evidence in
+EVIDENCE_DOSSIER.md, the claim store in claims/claims.yaml, and - where this stage
+needs it - the cv-drafter skill, which is how this job is done.
 
 They are already here. Do not spend tool calls re-reading them.
 
@@ -40,39 +38,25 @@ its reasoning in strategy.md. The human gate has not been removed: an approval b
 sends Alp the rendered PDFs and refuses every send until he approves. Draft as
 though the document goes out exactly as written.
 
-You have five tools: read_file, write_file, list_files, render_pdf, finish.
-Writes are confined to this application's folder; anything else is refused. There
-is no shell - render_pdf calls the renderer directly.
+**The work is split into four stages, and this conversation is one of them.** The
+message that follows says which stage it is and what one file it produces. Do that
+and only that. The stage ends when the file is right, which is checked by reading
+it back off disk - not when you say so, and there is no tool for saying so.
 
-Hard rules, checked mechanically after you stop:
-  - Never invent. Every factual sentence traces to a dossier section or a claim id.
-  - Never use an em dash. Use a plain dash.
-  - Rewrite both documents end to end. They are currently verbatim copies of
-    another company's application, in that company's language. Leaving any of that
-    text in place is the exact failure that already happened once on this path.
-  - Write strategy.md and claims-used.md. Both are required.
-  - Render both documents to PDF.
+  - Answer with tool calls. A reply with no tool call changes nothing on disk, and
+    the stage will simply ask you again with a list of what is still wrong.
+  - Writes are confined to this application's folder, and each stage has exactly
+    one way to write. There is no shell. The PDFs are rendered by the pipeline
+    after the last stage, so rendering is never your job.
   - Do not rename the folder. It is the tracking store's primary key.
 
-Call finish last, with your closing paragraph: the angle taken, the gaps you
-named, and anything about this posting Alp should look at before approving.
-"""
-
-TASK = """\
-Draft the application now.
-
-Company:      {company}
-Role:         {title}
-URL:          {url}
-Posting text: {posting_file}   (already fetched - read this file, not the URL)
-Folder:       applications/{slug}/   (already scaffolded from the house template)
-
-The folder already contains Lebenslauf_Ali_Alp_Oezer.html and
-Anschreiben_Ali_Alp_Oezer.html as copies of the house template, plus posting.md.
-Start by reading the posting and the two templates, then follow the skill's
-process: parse the posting and its register, do the requirement-by-requirement
-gap analysis, write strategy.md, draft both documents, write claims-used.md,
-render both PDFs, read your own output back, then call finish.
+Hard rules, checked mechanically the moment you write:
+  - Never invent. Every factual sentence traces to a dossier section or a claim id.
+    Framing, ordering and emphasis are yours to push hard; checkable facts are not.
+  - Never use an em dash. Use a plain dash.
+  - Both documents start as verbatim copies of another company's application, in
+    that company's language. Not one word of that may survive into the version you
+    write. That failure has already happened once on this path.
 """
 
 
@@ -86,12 +70,28 @@ def _read(path: Path, label: str) -> str:
     return path.read_text(encoding="utf-8")
 
 
-def build_system_prompt(repo: Path, skill_dir: Path) -> str:
-    """Header plus the three documents, verbatim, in the order the skill expects."""
-    skill = _read(skill_dir / "SKILL.md", "cv-drafter's SKILL.md")
+def build_system_prompt(repo: Path, skill_dir: Path, *, include_skill: bool = True) -> str:
+    """Header plus the grounding documents, verbatim, in the order the skill expects.
+
+    `include_skill=False` drops SKILL.md, which is ~20.7 KB of *drafting
+    methodology*. The claims stage does not draft: it maps finished sentences back
+    to their evidence, and it is already the largest request in the pipeline
+    because it carries both finished documents on top of everything else. Being
+    the biggest conversation contradicts the whole reason the job was split up,
+    and on the free route that request is the one the provider errors out on.
+    """
     dossier = _read(repo / "EVIDENCE_DOSSIER.md", "EVIDENCE_DOSSIER.md")
     claims = _read(repo / "claims" / "claims.yaml", "claims/claims.yaml")
+    if not include_skill:
+        return (
+            SYSTEM_HEADER
+            + f"\n\n{'=' * 70}\n# DOCUMENT 1 OF 2 - EVIDENCE_DOSSIER.md\n{'=' * 70}\n\n"
+            + dossier
+            + f"\n\n{'=' * 70}\n# DOCUMENT 2 OF 2 - claims/claims.yaml\n{'=' * 70}\n\n"
+            + claims
+        )
 
+    skill = _read(skill_dir / "SKILL.md", "cv-drafter's SKILL.md")
     skill_rel = skill_dir.relative_to(repo).as_posix()
     return (
         SYSTEM_HEADER
@@ -99,17 +99,12 @@ def build_system_prompt(repo: Path, skill_dir: Path) -> str:
         + f"Its own directory is {skill_rel}/. Where it refers to references/... or\n"
         + "scripts/..., those are relative to that directory and reachable with\n"
         + "read_file. Every other path it names is relative to the repository root.\n"
-        + "One instruction in it is superseded: ignore its Windows render command and\n"
-        + f"use the render_pdf tool.\n{'=' * 70}\n\n"
+        + "Two of its instructions are superseded: rendering is not yours to do, and its\n"
+        + "step 7 human checkpoint is the approval bot's job, after you are finished.\n"
+        + f"{'=' * 70}\n\n"
         + skill
         + f"\n\n{'=' * 70}\n# DOCUMENT 2 OF 3 - EVIDENCE_DOSSIER.md\n{'=' * 70}\n\n"
         + dossier
         + f"\n\n{'=' * 70}\n# DOCUMENT 3 OF 3 - claims/claims.yaml\n{'=' * 70}\n\n"
         + claims
-    )
-
-
-def build_task_prompt(*, slug: str, company: str, title: str, url: str, posting_file: str) -> str:
-    return TASK.format(
-        slug=slug, company=company, title=title, url=url, posting_file=posting_file
     )

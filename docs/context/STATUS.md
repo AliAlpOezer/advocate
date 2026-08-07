@@ -1,6 +1,6 @@
 # Status — advocate
 
-Last updated: 2026-08-06
+Last updated: 2026-08-07
 
 ## Current focus
 
@@ -160,6 +160,26 @@ databank. Archived separately rather than deleted; the titles are real.
    failover chain (OpenRouter → Zen → NIM) with the seven keys rotating inside tier 1
    on 429, cv-drafter's SKILL.md inlined into a brief because OpenCode does not
    discover `.claude/skills/`, and the permission lists ported across.
+
+   **The drafting subgraph now produces a real application. 2026-08-07.** The
+   single-conversation version stalled twice, so the agent node was split into
+   `analyse -> draft_cv -> draft_letter -> claims -> render`: four short
+   conversations plus a deterministic render, each stage ending on a filesystem
+   check rather than the model declaring itself done, and each skipped outright if
+   its output is already correct (so a retry resumes). Measured against the live
+   Vodafone lead: the CV drafted in 2 turns, the cover letter in 3, both PDFs
+   rendered, and **`verify.ts` passes on both documents** - the first complete
+   drafted documents this loop has produced. The German is specific and grounded
+   (SAP Innovation Award, TwInTraSys, the DVRP thesis, the TUM enrolment claim).
+   `claims-used.md` is the one stage still not landing on the free route; detail
+   and the three provider defects found underneath it are in
+   `advocate-data/docs/context/apply-send-loop.md` and this repo's `decisions.md`.
+
+   **Found in that draft, and it is a content problem not a pipeline one:** the
+   cover letter gives Würzburg as the address and the dateline, because
+   `EVIDENCE_DOSSIER.md §1` still does. That is the dossier debt listed above,
+   now leaking into a real application aimed at Munich. Fix the dossier before
+   the next draft, not the letter.
 
    **The end-to-end draft was run twice on 2026-08-06 and did not complete.**
    Everything below the model call is now verified on real data — selection, fetch,

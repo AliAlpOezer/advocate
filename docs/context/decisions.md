@@ -99,6 +99,72 @@ the unauthenticated guest job-search endpoints, not the authenticated API.
 Cost we accepted: LinkedIn coverage is capped by whatever the guest endpoint allows
 before it starts rate-limiting; no workaround is attempted.
 
+## Three provider defects, each of which looked like a model refusing to work
+
+Found 2026-08-07 while getting the split to draft. All three are recorded because each
+one cost a run and each would be re-introduced by an obvious-looking change.
+
+**`finish_reason: "error"` arrives inside a 200 response.** Replaying the failing request:
+2,464 completion tokens, all reasoning, no content, no tool call, HTTP 200. The chain
+accepted it as an assistant turn, so a stage burned its whole budget on replies the
+provider had already failed - and it read exactly like a model declining the job. This is
+OpenCode-exits-0 one layer down. `ChainedChat.invoke` now classifies an unusable reply
+(`finish_reason: "error"`, or no content and no tool call) as a provider failure.
+
+**`tool_choice` forcing corrupts the argument. Do not re-add it as a stall fix.** One
+probe, same model, same prompt, same session: unforced the model wrote `- alpha\n- beta`
+with real newlines; forced it wrote `- alpha<br>- beta` with none, and the real file it
+produced under forcing was 8,192 characters on a single line. Good content, unusable
+shape. Re-run the probe in `graph.py`'s comment before believing otherwise.
+
+**`ChatOpenAI(timeout=...)` is not a wall-clock bound.** A turn ran past 20 minutes against
+a 600s client timeout; the run before it spent 53,893 seconds without completing a turn. A
+read timeout is reset by anything arriving on the socket. The chain now enforces its own
+deadline on a daemon thread, because the only other bound was the driver killing the
+subprocess, which loses every stage at once.
+
+Related: **`minimax/minimax-m3:free` no longer exists** (404, "unavailable for free"), and
+OpenRouter has no free minimax variant at all. Tier 2 is `nemotron-3-super-120b-a12b:free`
+- same family as tier 1, so a shared upstream can fail both. Accepted deliberately: the
+fallback is there to survive a rate limit, not to be a second opinion on German prose.
+
+## The drafting subgraph is five small stages, and no `finish` tool
+
+Decided 2026-08-06, after the single-conversation version stalled twice. Asked for a
+whole application in one conversation, nemotron-3-ultra read the posting and both
+templates, wrote a correct `strategy.md`, and then stopped emitting tool calls - 3 turns
+and 4 tool calls un-nudged, 6 turns and the *same* 4 tool calls with the nudge node live.
+The loop was fine; the horizon was too long.
+
+**The pipeline is now `analyse -> draft_cv -> draft_letter -> claims -> render`**, each a
+fresh short conversation carrying the same preloaded grounding material and writing
+exactly one file. `render` is not a model turn at all - it calls `build_pdf.render`
+directly, which removes the two tool calls both stalled runs died before reaching.
+
+**Rejected: switch to `minimax/minimax-m3:free`,** which was the standing alternative and
+would probably have worked. Alp's call: he expects to buy OpenRouter credit and run
+nemotron-3-ultra paid, so a design that only works on a different free model is the wrong
+thing to build. minimax stays as tier 2 of the chain, which costs nothing.
+
+**A stage ends when its output is right on disk, not when the model says so** - so there
+is no `finish` tool any more, and `stage.problems()` is the exit condition. Three things
+follow, and they are the reason this is a decision and not a refactor:
+- a failure names a stage (`draft_letter never wrote the file`) instead of a turn count;
+- a retry *resumes* - a stage whose problems are already empty is skipped without a model
+  call, so `APPLY_DRAFT_MAX_ATTEMPTS` stops meaning "do the whole thing again";
+- the nudge is computed from the folder, so a model that got it nearly right is told the
+  leftover marker or the em dash, not asked to try harder.
+
+The checks are deliberately the ones `verify.ts` would fail on later, moved forward to
+where they are still cheap to fix. `verify.ts` is unchanged and still has the last word:
+it is the independent cross-check, and duplicating a check in both places is the point,
+not an accident.
+
+**The model writes a `<body>`, not a document.** `write_document` splices it into the
+house shell, so the print CSS that fixes the page count cannot be damaged by a draft and
+the generated tokens roughly halve. Each stage is handed exactly one way to write, so the
+CV stage has no tool that can touch the cover letter.
+
 ## The drafting agent is a LangGraph subgraph here, not an agent CLI shelled out to
 
 Decided 2026-08-06, Alp's call, reversing the harness decision taken earlier the same
