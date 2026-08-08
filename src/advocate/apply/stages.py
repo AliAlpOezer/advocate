@@ -46,7 +46,16 @@ CLAIMS_USED = "claims-used.md"
 # been drafted against before. Both mirror verify.ts deliberately: the two sides
 # must agree on what "the scaffold was never edited" means, or a draft passes one
 # gate and fails the other for reasons nobody can reconcile.
-TEMPLATE_SLUG = "SSI_Schaefer_Bewerbung"
+#
+# Corrected 2026-08-08. verify.ts moved this from `SSI_Schaefer_Bewerbung` to a
+# dedicated `_template` on 2026-08-07 and this copy did not follow, so for a day
+# the two sides disagreed in the worst possible direction: this one compared each
+# new scaffold against a *real sent application*, which exists and differs, so
+# `cv_problems()` returned nothing and `draft_cv` skipped itself as "already
+# complete" over an untouched template. BMW attempt 2 on 2026-08-08 spent 333s
+# writing a claims map for a CV that was still the scaffold. verify.ts caught it;
+# nothing here did.
+TEMPLATE_SLUG = "_template"
 TEMPLATE_MARKERS = ("SSI", "Schäfer", "Schaefer", "Platinion", "Temedica")
 
 # Same thresholds as verify.ts, for the same reason.
@@ -119,8 +128,24 @@ class Application:
         return path.read_text(encoding="utf-8")
 
     def template(self, name: str) -> str:
+        """The scaffold `name` was copied from.
+
+        Raises rather than returning "" when it is missing, and that is the whole
+        point. The only caller is the byte-identity check in
+        `_document_problems`, which asks `html == app.template(name)`. A missing
+        file made that comparison silently false - the guard reported "no
+        problem" precisely when it had lost the ability to check anything, which
+        is how a wrong TEMPLATE_SLUG went a day without being noticed. A blind
+        guard has to fail loudly; a quiet one is worse than none.
+        """
         path = self.template_dir / name
-        return path.read_text(encoding="utf-8") if path.is_file() else ""
+        if not path.is_file():
+            raise SystemExit(
+                f"refusing to draft: no template at {path}, so there is no way to tell whether "
+                f"{name} was ever rewritten. Check TEMPLATE_SLUG ({TEMPLATE_SLUG!r}) against the "
+                f"folder new-application.sh copies from, and against verify.ts's TEMPLATE_SLUG."
+            )
+        return path.read_text(encoding="utf-8")
 
 
 def _document_problems(app: Application, name: str, *, needs_company: bool) -> list[str]:

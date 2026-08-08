@@ -39,6 +39,7 @@ from advocate.apply.stages import (  # noqa: E402
     STRATEGY,
     TEMPLATE_SLUG,
     Application,
+    cv_problems,
 )
 
 TEMPLATE_HTML = """<!doctype html>
@@ -311,6 +312,41 @@ def test_template_text_left_behind_is_not_finished(tmp: Path) -> None:
     assert final["failed"] == "draft_cv"
     problems = " ".join(stage(final, "draft_cv")["problems"])
     assert "SSI" in problems and "Schaefer" in problems
+
+
+def test_template_slug_is_the_folder_the_driver_actually_copies_from() -> None:
+    """Pinned to a literal, deliberately, because every other test derives from it.
+
+    `make_repo` builds its template dir at `applications/<TEMPLATE_SLUG>/`, so the
+    suite agrees with this constant whatever it says and cannot see it drift. It
+    did drift: verify.ts moved to `_template` on 2026-08-07, this side stayed on
+    `SSI_Schaefer_Bewerbung` until 2026-08-08, and in between every new scaffold
+    was compared against a real sent application - which exists and differs, so
+    `cv_problems()` came back empty and `draft_cv` skipped itself over an
+    untouched template. The literal is the only thing a fixture cannot fake.
+    """
+    assert TEMPLATE_SLUG == "_template"
+
+
+def test_a_missing_template_fails_loudly_rather_than_passing_the_check(tmp: Path) -> None:
+    """A guard that cannot check must not report success.
+
+    `template()` used to return "" for a missing file, which made the
+    byte-identity comparison silently false - "no problem" at exactly the moment
+    it had stopped being able to tell.
+    """
+    app = make_repo(tmp)
+    (app.template_dir / CV).unlink()
+
+    try:
+        problems = cv_problems(app)
+    except SystemExit as exc:
+        assert "TEMPLATE_SLUG" in str(exc)
+    else:
+        raise AssertionError(
+            f"a missing template reported {problems!r} instead of failing - the byte-identity "
+            f"guard was blind and said nothing was wrong"
+        )
 
 
 def test_write_file_refuses_the_documents_and_escapes(tmp: Path) -> None:
