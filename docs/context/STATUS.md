@@ -21,13 +21,26 @@ correct in spirit, but every paid path is blocked on Alp (see below).
 `stages.CLAIMS_MODEL` is tried ahead of the free chain; the drafting stages keep the
 default because they work and their German has been approved. Rationale in `decisions.md`.
 
-**Open, and the next thing to do.** `CLAIMS_MODEL` currently points at
-`poolside/laguna-s-2.1:free`, chosen on a single probe sample - it produced a usable turn
-on the identical request in 13.6s where nemotron produced none, but it was a `list_files`
-call and it has **never been observed writing the file**. That is thin evidence and it is
-knowingly thin.
+**Confirmed end to end on the box, 2026-08-08 15:53 UTC. The loop has sent its first
+review card.** BMW ran with `CLAIMS_MODEL=poolside/laguna-s-2.1:free`:
 
-The better target arrived late: `ALIBABA_PLAN_SPESIFIC_SECRET` against
+```
+analyse/draft_cv/draft_letter: skipped (already correct)
+claims: ok 1109.3s, 3 turns, write_file on turn 3      render: ok 1.0s
+```
+
+`claims-used.md` is 200 lines / 27,094 bytes, both PDFs rendered, and the record moved to
+`pending_review` with `reviewNotifiedAt=2026-08-08T15:53:46.854Z` and an `artifactHash`.
+That closes the "no review card has ever been sent" gap below, and it exercises the
+PDF-attachment path in production for the first time. **Judge the card itself before
+trusting the German** - nothing has graded this map yet.
+
+Three turns, not one: the model spends its first turns on `list_files`/`read_file` before
+writing. That is fine - the stage allows five - but it means a probe that stops after one
+turn cannot tell this route from a broken one.
+
+**Still worth doing: move `claims` to the Alibaba plan rung.** 1,109s for one stage is
+slow, and the free route has no headroom. `ALIBABA_PLAN_SPESIFIC_SECRET` against
 `https://token-plan.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1` reaches **seven
 models, all of which tool-call**, including `qwen3.8-max` and `deepseek-v4-pro`. It was
 not wired in because the probe against it could not be completed from the laptop (see the
@@ -42,14 +55,6 @@ ADVOCATE_CLAIMS_MODEL=qwen3.8-max          # plus the base URL and key, wired as
 Note the two Alibaba keys already in the repo `.env` are *not* interchangeable: each is
 bound to its own host and returns 401 against the others, and only the plan-specific one
 has any entitlement. Table in `decisions.md`.
-
-**A BMW run was started at 15:34 UTC and its outcome was never seen** - the session ended
-with the agent still on the claims stage, ~14 minutes in, no `claims-used.md` on disk. Check
-before assuming anything:
-
-```
-ssh alpiclawd 'systemctl is-active apply-draft.service; tail -20 "$(ls -t /srv/advocate-data/apply/state/draft-logs/* | head -1)"'
-```
 
 **The test suite was never running.** Fourteen of eighteen tests errored on a `tmp` fixture
 that was never defined; "18 Python tests pass" counted collected tests and four ran. Fixed
@@ -158,9 +163,10 @@ commands in `apply-viewer.service`'s header plus `APPLY_VIEWER_BASE_URL` in the 
 `daemon.env`; until that variable is set the bot emits no link, so the halves can land in
 either order.
 
-**No review card has ever been sent.** All four records have `reviewNotifiedAt` unset and
-no `artifactHash`, so `announcePending()` has never fired - the three `sent`/`approved`
-ones predate the bot. The gate is live and has had nothing to show. The only Telegram
+~~**No review card has ever been sent.**~~ **Superseded 2026-08-08 15:53** - BMW is
+`pending_review` with `reviewNotifiedAt` and an `artifactHash` set, so `announcePending()`
+has now fired once. The rest of this paragraph still describes the other three records,
+which predate the bot. The gate is live and has had nothing to show. The only Telegram
 traffic the loop has produced about an application is the give-up notice from
 `select.ts:91`. So the PDF-attachment path, and now the folder link, are correct in code
 and **unexercised in production**.
