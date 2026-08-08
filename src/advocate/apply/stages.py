@@ -32,6 +32,7 @@ reaching.
 
 from __future__ import annotations
 
+import os
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -421,9 +422,19 @@ class Stage:
     document: str | None = None
     # Whether cv-drafter's SKILL.md is preloaded for this stage. It is drafting
     # methodology, so the stage that only maps finished sentences to their sources
-    # does not need it - and that stage is otherwise the largest request in the
-    # pipeline, which is the opposite of what splitting the job was for.
+    # does not need it.
+    #
+    # Corrected 2026-08-08: this comment used to claim `claims` was "otherwise the
+    # largest request in the pipeline", and `prompt.py` said the same. Measured on
+    # BMW, it is the *smallest* - 85,240 chars against draft_letter's 118,018,
+    # which succeeds. Dropping the skill was still right, but it was never what
+    # made `claims` fail, and believing it sent the first fix at the wrong target.
     needs_skill: bool = True
+    # A model to try ahead of the free chain for this stage only, or None to use
+    # the chain as configured. This exists because the stages are not
+    # interchangeable workloads: see `providers.ChainedChat._chain_for` for the
+    # measurement, and `CLAIMS_MODEL` below for why this stage has one.
+    model: str | None = None
 
 
 def _analyse_task(app: Application) -> str:
@@ -476,9 +487,25 @@ def _claims_task(app: Application) -> str:
     )
 
 
+# The route `claims` runs on, ahead of the free chain. Not a preference: the
+# chain's tier-1 model cannot serve this stage at all. Replaying the real request
+# on 2026-08-08 gave 0 usable turns in 6 attempts at full size, against a control
+# that showed the identical request succeeding with the tools removed - so the
+# failure is delivering a large tool call, not the model, the keys, the reasoning
+# budget or the size of the preload.
+#
+# The two drafting stages deliberately keep the chain's default. They work on it,
+# their German has been read and approved, and swapping the model that writes the
+# documents on evidence about a different stage is exactly the kind of drift this
+# pipeline has already been burned by twice.
+#
+# Set ADVOCATE_CLAIMS_MODEL to "" to put this stage back on the chain's default.
+CLAIMS_MODEL = os.environ.get("ADVOCATE_CLAIMS_MODEL", "poolside/laguna-s-2.1:free") or None
+
 DRAFTING_STAGES: tuple[Stage, ...] = (
     Stage("analyse", "file", _analyse_task, analyse_problems),
     Stage("draft_cv", "document", _cv_task, cv_problems, document=CV),
     Stage("draft_letter", "document", _letter_task, letter_problems, document=LETTER),
-    Stage("claims", "file", _claims_task, claims_problems, needs_skill=False),
+    Stage("claims", "file", _claims_task, claims_problems, needs_skill=False,
+          model=CLAIMS_MODEL),
 )

@@ -137,6 +137,11 @@ def openrouter_keys() -> tuple[str, ...]:
     return tuple(keys)
 
 
+def openrouter_tier(model: str) -> Tier:
+    """One OpenRouter rung on `model`, sharing the same key pool as the rest."""
+    return Tier("openrouter-stage", model, openrouter_keys())
+
+
 def anthropic_tier() -> Tier | None:
     """The escalation rung, or None when there is no key to reach it with.
 
@@ -322,12 +327,45 @@ class ChainedChat:
         )
         return model.bind_tools(tools) if tools else model
 
-    def invoke(self, messages: list[AnyMessage], tools: list | None = None) -> BaseMessage:
+    def _chain_for(self, prefer: str | None) -> list[Tier]:
+        """The chain for one call, with a stage's own route in front of the free rungs.
+
+        `prefer` exists because the pipeline's stages are not interchangeable
+        workloads and measurement said so. On 2026-08-08 the `claims` request was
+        replayed against tier 1 twelve times: 0 of 6 produced a usable turn at
+        full size, one reply truncated mid-JSON at 12,265 characters while
+        delivering a large tool-call argument, and the same request without tools
+        completed normally at 8,462 tokens. The route can generate the content and
+        cannot deliver it through a tool call, and no request-level lever moved it
+        - not reasoning effort, not disabling reasoning, not a reasoning cap, not
+        dropping a document, not cutting the tool set.
+
+        Order matters twice here:
+
+          - **An escalation still wins.** A paid rung is only ever reached because
+            Alp tapped Revise, and a stage preference must not displace what he
+            asked and paid for.
+          - **The standard free chain stays underneath.** The preference is a
+            better first guess for this one stage, not a claim that it is more
+            reliable, so a stage whose own route is rate limited still falls back
+            to the chain every other stage uses rather than failing outright.
+        """
+        if not prefer:
+            return self.tiers
+        paid = [t for t in self.tiers if t.provider == "anthropic"]
+        free = [t for t in self.tiers if t.provider != "anthropic"]
+        return paid + [openrouter_tier(prefer)] + [t for t in free if t.model != prefer]
+
+    def invoke(self, messages: list[AnyMessage], tools: list | None = None,
+               prefer: str | None = None) -> BaseMessage:
         """One assistant turn, or an exception once every tier is spent.
 
         `tools` is per call rather than bound once, because each stage of the
         pipeline offers a different set - the stage that writes the CV has no way
         to write the cover letter, and that is enforced by what it is handed.
+
+        `prefer` names a model to try ahead of the free chain for this call; see
+        `_chain_for`.
 
         **There is deliberately no `tool_choice` here.** Forcing the call was tried
         and is measurably harmful on this model - see the note in `graph.py`.
@@ -335,7 +373,7 @@ class ChainedChat:
         bound = self._tools if tools is None else tools
         last_error: Exception | None = None
 
-        for tier in self.tiers:
+        for tier in self._chain_for(prefer):
             keys: tuple[str | None, ...] = tier.keys or (None,)
             rotations = 0
             retried_transient = False

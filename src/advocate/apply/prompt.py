@@ -75,10 +75,16 @@ def build_system_prompt(repo: Path, skill_dir: Path, *, include_skill: bool = Tr
 
     `include_skill=False` drops SKILL.md, which is ~20.7 KB of *drafting
     methodology*. The claims stage does not draft: it maps finished sentences back
-    to their evidence, and it is already the largest request in the pipeline
-    because it carries both finished documents on top of everything else. Being
-    the biggest conversation contradicts the whole reason the job was split up,
-    and on the free route that request is the one the provider errors out on.
+    to their evidence, so the methodology is dead weight there.
+
+    **Corrected 2026-08-08.** This docstring used to justify the cut by calling
+    claims "already the largest request in the pipeline", and that was measured
+    false: with the skill dropped it is the *smallest*, at 85,240 chars against
+    draft_letter's 118,018 - and draft_letter succeeds. Dropping the skill is
+    still right on its own terms, but it is not why claims failed, and the belief
+    that size was the problem is what pointed the first two attempted fixes at
+    nothing. What actually fails is delivering a large tool call on that route;
+    see `stages.CLAIMS_MODEL`.
     """
     dossier = _read(repo / "EVIDENCE_DOSSIER.md", "EVIDENCE_DOSSIER.md")
     claims = _read(repo / "claims" / "claims.yaml", "claims/claims.yaml")

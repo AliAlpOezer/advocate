@@ -70,7 +70,7 @@ def build_stage_graph(stage: Stage, chat, app: Application, tools: list, sink: l
     def agent(state: StageState) -> dict:
         turn = state.get("turns", 0) + 1
         started = time.time()
-        reply = chat.invoke(state["messages"], tools)
+        reply = chat.invoke(state["messages"], tools, prefer=stage.model)
         # Logged per turn, not per stage. A document turn generates thousands of
         # tokens and a stage can take minutes; the OpenCode lesson was that a
         # silent pipe gets diagnosed as a hang and killed at 15 minutes when it
