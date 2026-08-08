@@ -15,7 +15,22 @@ Fix: <what to do>
 <!-- Entries below. Delete one the moment the underlying cause is fixed for good —
      a stale gotcha sends agents down a dead path with full confidence. -->
 
-### Every tier of the drafting chain fails and the draft produces nothing
+### A stage reports "already complete, skipped" over a file it never wrote
+Cause: the stage's `problems()` compared against the wrong file and could not tell.
+`stages.py` held `TEMPLATE_SLUG = "SSI_Schaefer_Bewerbung"` after `verify.ts` moved to
+`_template` (2026-08-07 15:14, the entry below). It then compared each scaffold against a
+**real sent application** - which exists and differs - so `cv_problems()` came back empty
+and `draft_cv` skipped itself over an untouched template. Worse, `template()` returned `""`
+for a missing file, making the comparison silently false: the guard said "no problem"
+exactly when it had lost the ability to check. `verify.ts` caught it an hour later; nothing
+upstream did. The suite could not - `make_repo` builds its template dir *from* the constant
+under test, so it agrees with any value.
+Fix: fixed 2026-08-08 (`065b018`), and the general rule is the point. **A guard that cannot
+perform its check must raise, never return a falsy sentinel.** When two components encode
+the same fact, pin one to a literal in a test - a fixture derived from the constant cannot
+see it drift.
+
+### Every tier of the drafting chain fails
 Cause: **the chain only ever tries key 1, whatever the key count.** Corrected 2026-08-08;
 this entry previously said "two keys is not enough, add the other five" and that was
 wrong - all seven were deployed and it changed nothing. Key rotation fires on **429 only**.
@@ -27,9 +42,11 @@ openrouter[key 1/7]     nemotron-3-ultra: finish_reason='error' → retry → sa
 openrouter-alt[key 1/7] nemotron-3-super: finish_reason='error' → retry → same → next tier
 ```
 
-Measured on the box 2026-08-07 19:33 (BMW). The run burned **1594s and never edited the
-scaffold**; `verify.ts` failed it on all four counts including byte-identical-to-template.
-Note the interaction with the entry below: `finish_reason='error'` is *already* recognised
+Measured on the box 2026-08-07 19:33 (BMW). **Do not read this as the reason a draft comes
+back empty** - that was the 2026-08-07 diagnosis and it was wrong. The entry above is why no
+CV was ever written, and it fires with a perfectly healthy provider chain. Re-probed
+2026-08-08 across both tiers: 14/14 key-model pairs OK, so the 19:33 failure was transient
+upstream capacity. Note the interaction with the entry below: `finish_reason='error'` is *already* recognised
 as a provider failure, so the bug is not detection, it is which axis the failure advances.
 Fix: **not simply "rotate on error too" - that is the trap.** `providers.py`'s docstring
 records a deliberate three-way policy: 429 rotates the key, 5xx/timeout retries once then

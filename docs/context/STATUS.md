@@ -30,24 +30,62 @@ running and polling; `/srv/advocate/.venv` exists with `requirements.txt` instal
 the queue cap; the Telegram chat id is set (Bucket 2's last gap, closed). Both suites pass
 **on the box**: 16 Python, 18 TypeScript.
 
-**The drafter cannot finish a document yet. Corrected 2026-08-08: it is a code problem,
-not a supply problem.** The earlier reading here - "two OpenRouter keys is not enough, add
-the other five and the loop closes" - was wrong, and adding keys would not have helped.
+**The drafter's CV stage was never running. Root-caused and fixed 2026-08-08 (`065b018`).**
+Two earlier diagnoses on this line were both wrong, and each was wrong in the same way -
+they explained the loudest error in the log rather than the reason no CV existed.
 
-All seven keys are now deployed, and the 2026-08-07 19:33 tick on BMW proves the defect:
+`stages.py` held `TEMPLATE_SLUG = "SSI_Schaefer_Bewerbung"`. `verify.ts` moved to a
+dedicated `_template` on 2026-08-07 15:14 and this copy did not follow. The two sides then
+disagreed in the worst possible direction: the Python guard compared each new scaffold
+against *a real sent application*, which exists and differs, so `cv_problems()` returned
+empty and `draft_cv` skipped itself as "already complete" over an untouched template.
+
+Measured, not reasoned. BMW attempt 2 on 2026-08-08 09:03:
 
 ```
-openrouter[key 1/7]     nemotron-3-ultra: finish_reason='error' → retry → same → next tier
-openrouter-alt[key 1/7] nemotron-3-super: finish_reason='error' → retry → same → next tier
+analyse: skipped   draft_cv: skipped   draft_letter: skipped   claims: ok 330s   render: ok
 ```
 
-**Key rotation fires on 429 only.** `finish_reason='error'` walks the *tiers* instead, so
-the chain exhausted itself in four calls and six of the seven keys were never tried. Fix
-the rotation predicate before adding capacity of any kind. The run burned 1594s and never
-edited the scaffold; `verify.ts` failed it on all four counts including
-byte-identical-to-template, which is invariant 3 working exactly as designed. Vodafone has
-now hit 3 attempts and is parked. **`apply-draft.timer` stays NOT enabled** until the
-rotation is fixed.
+The provider chain was **healthy** on that run - no tier exhaustion, no `finish_reason='error'`.
+It still failed, because the stage that writes the CV was never asked to run. It then spent
+330s writing a 254-line grounding record for a CV that was still the scaffold, and rendered
+that scaffold into a 126 KB PDF. `verify.ts` caught all of it; nothing upstream did.
+
+The fix is two lines and one principle: `TEMPLATE_SLUG = "_template"`, and `template()`
+now **raises instead of returning `""`** when the file is missing. That empty string is
+what let the drift hide - it made the byte-identity comparison silently false, so the guard
+reported "no problem" at exactly the moment it stopped being able to check. Same
+silent-success class as the two traps already recorded in §Built.
+
+The suite could not have caught it: `make_repo` builds its template dir at
+`applications/<TEMPLATE_SLUG>/`, so it agrees with the constant whatever it says. The new
+test pins the literal, which is the one thing a fixture cannot fake. **18 Python tests pass,
+was 16.**
+
+**Blast radius is exactly one application**, and the timeline proves it: Vodafone drafted
+11:21 (constant still correct), `_template` landed 15:14, BMW 19:33 was the first run to
+hit the drift. Vodafone's and Temedica's CVs re-check clean under the fix - no false
+positives.
+
+**Key rotation is a real but separate defect, still unfixed and now un-blamed.** It fires
+on 429 only, so `finish_reason='error'` walks the tiers and exhausts the chain in four
+calls with six of seven keys untried. That is worth fixing on its own merits; it was never
+the reason the drafter produced nothing.
+
+`scripts/probe_key_rotation.py` was run on the box 2026-08-08 against both tiers and
+returned **INCONCLUSIVE twice - 14/14 key-model pairs OK**. The 2026-08-07 19:33 failure
+was transient upstream capacity, since recovered. Do not change the rotation predicate on
+this evidence; re-run the probe while the drafter is actually failing.
+
+**Measured in passing: nemotron-3 reasons in the open by default.** With `max_tokens: 16`,
+5 of 7 keys on tier 2 returned the model's scratchpad (`'The user asks: "Repl'`) instead of
+the requested word. Same failure mode already recorded for the hunt's fit gate, now
+confirmed on both drafting models. It is a live candidate cause for any future
+`finish_reason='error'`-with-no-tool-call: an open-reasoning model can burn its budget
+thinking and never reach the tool call.
+
+**`apply-draft.timer` stays NOT enabled** until BMW completes one clean end-to-end run by
+hand.
 
 **F2 was answered by a button, not built.** A dead listing is now 🚫 Listing gone on the
 review card (plus `/gone <slug>`), which drops the record to `withdrawn`. Component 1b is
@@ -73,22 +111,29 @@ traffic the loop has produced about an application is the give-up notice from
 `select.ts:91`. So the PDF-attachment path, and now the folder link, are correct in code
 and **unexercised in production**.
 
-**Next session starts here, and it is a measurement, not an edit.** Alp's call 2026-08-08:
-run `scripts/probe_key_rotation.py` on the box before touching the rotation predicate.
+**Next session starts here: re-run BMW by hand and get the first review card.** The fix is
+deployed on the box (`/srv/advocate` at `065b018`) and the contaminated artifacts are
+cleared, so the next tick should draft a real CV.
 
 ```
 ssh alpiclawd
-cd /srv/advocate && set -a; . /etc/advocate-apply/daemon.env; set +a
-.venv/bin/python scripts/probe_key_rotation.py        # add --alt for the tier-2 model
+systemctl start --no-block apply-draft.service   # ~6 min, watch: journalctl -fu apply-draft
 ```
 
-It sends one short request per key, sequentially, and prints PER-KEY, UPSTREAM or
-INCONCLUSIVE. PER-KEY → rotate on `finish_reason='error'` and exhaust the tier's keys before
-dropping. UPSTREAM → the current policy is already right and the fix is a different tier-1
-model or the paid rung. INCONCLUSIVE means the failure was not reproducing; re-run when the
-drafter is actually failing. Do not change `providers.py` before this prints something.
+Two decisions are open before that run and both are Alp's:
 
-Then: the first real review card end to end, then component 4 (the submitter).
+1. **BMW's `Anschreiben_Ali_Alp_Oezer.html` was drafted against the template CV**, because
+   `_letter_task` feeds the CV body in as context and the CV was still the scaffold. It is
+   kept, so `draft_letter` will skip it. Delete it to force a coherent redraft, or accept
+   it. Recommendation: delete - a letter written against a CV that did not exist is not
+   worth the coin-flip.
+2. **`draftAttempts` is at 2 of 3**, both burned entirely by this bug. Left as-is, one more
+   failure parks BMW like Vodafone. Recommendation: reset to 0 in
+   `apply/data/applications.json`.
+
+Backup of everything removed: `alpiclawd:/root/advocate-cleanup-2026-08-08/`.
+
+Then: component 4 (the submitter).
 
 Phase C (tailored CV/cover-letter drafting) is underway; first validation run complete.
 CSS → design system and HTML → Jinja templates remain queued behind it, per the
