@@ -85,6 +85,32 @@ Note the two Alibaba keys already in the repo `.env` are *not* interchangeable: 
 bound to its own host and returns 401 against the others, and only the plan-specific one
 has any entitlement. Table in `decisions.md`.
 
+## The cover letter is the live problem. Bucket 1 shipped 2026-08-08, unmeasured.
+
+Alp read the BMW Anschreiben 2026-08-08: "it couldnt be worse than that". He is right, and
+the cause is structural, not a bad model day. **Full design record: `three-loop-architecture.md`
+F11**, which also adds invariant 7. Read it before touching the letter.
+
+The short form: `LETTER_TASK` was five prohibitions and no statement of purpose, and
+SKILL.md's 90-line Writing craft section is entirely CV-oriented with no cover-letter rules
+at all. So the drafter wrote a prose CV - five paragraphs, ~1,050 words, nothing about BMW
+that is not a restatement of the job ad, plus an unprompted audit of Alp's own gaps.
+`SSI_Schaefer_Bewerbung`, written by hand, spends its first 130 words entirely on the
+employer. That contrast is the spec.
+
+**Bucket 1 is written and untested against a real draft:**
+- A new `## The Anschreiben` section in `advocate-data/.claude/skills/cv-drafter/SKILL.md` -
+  purpose, seven rules, a four-paragraph shape, 350-450 words. **Uncommitted**, alongside
+  the CV rework asks below; committing to `advocate-data` master deploys it on the next tick.
+- `LETTER_TASK` in `stages.py` rewritten: states what the document is for, and adds four
+  rules "no checker can see, so they are on you" - open on the company, source every
+  admiring sentence, specificity over adjectives, never volunteer gaps. **21 Python tests
+  still pass.**
+
+**Not yet done, and the measurement that matters: redraft BMW against it and compare.**
+Nothing has graded this change. Buckets 2 (`motivate.ts` and the advisory gate) and 3
+(`verify.ts` citation check) are designed in F11 and not built.
+
 ## The CV rework, asked for 2026-08-08 — three of four rules written
 
 Asks 1-3 are **written into `advocate-data/.claude/skills/cv-drafter/SKILL.md`** and are

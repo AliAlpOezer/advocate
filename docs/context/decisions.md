@@ -272,3 +272,32 @@ all of it was found by probing and none of it is visible from a catalogue or a d
   `qwen3.6-flash`, `deepseek-v4-pro`, `deepseek-v4-flash-0731`, `glm-5.2`. Each key is
   bound to its own host - every key returns 401 against the other two - so a key without
   its matching base URL looks exactly like a dead key.
+
+- **Alibaba explicit context caching is a trap for this pipeline. Use the implicit cache
+  and measure it.** Researched 2026-08-08 against Model Studio's own docs.
+
+  | | implicit | explicit |
+  |---|---|---|
+  | trigger | automatic, cannot be disabled | `"cache_control": {"type": "ephemeral"}` on a content block |
+  | minimum | ~1000 tokens (qwen3.7-max series), 256 others | 1024 tokens per block |
+  | TTL | indeterminate, cleared when old | **5 minutes, resets on hit** |
+  | create cost | free | **125%** of standard input price |
+  | hit cost | 20% | 10% |
+
+  Max 4 markers per request; the matcher looks back up to 20 content blocks per marker.
+  Both report through `usage.prompt_tokens_details` (`cached_tokens`, and
+  `cache_creation_input_tokens` for explicit).
+
+  **Why explicit loses here despite the cheaper hit.** Our 65,987-char preload is a
+  textbook cache prefix, but the stages are slow by nature - `claims` takes 1,109s over
+  three turns, `draft_cv` took 723s. The gaps between turns, and certainly between
+  stages, exceed the 5-minute TTL, so we would pay the 125% creation surcharge on every
+  stage and hit almost never. Strictly worse than doing nothing.
+
+  **What to do instead:** log `prompt_tokens_details.cached_tokens` on every response.
+  It is free and it answers, with a number, whether the preload is being reused at all.
+  Explicit caching only becomes worth its surcharge if stages are ever restructured to
+  run close together in time - so revisit this if that happens, and not before.
+
+  Source: `alibabacloud.com/help/en/model-studio/context-cache` and
+  `.../explicit-cache-best-practice`.

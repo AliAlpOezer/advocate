@@ -35,6 +35,10 @@ leave the system.
    `.gitignore`. Extended by F7: secrets do not enter `advocate-data` either.
 6. **Marking work as handled happens on completion, never on attempt.** Enforced by:
    `draftAttempts`, the `drafted` resume path, the hunt's deferred-unjudged fix.
+7. **No sentence of admiration for a company exists without a source Alp confirmed, or a
+   page it was quoted from.** Invariant 2 covers facts about Alp, which is what a claim id
+   is; this covers facts about the employer, which can never carry one. Enforced by:
+   `motivation.md`, confirmed-only lines reaching the drafter, `verify.ts` (F11, not built).
 
 Invariants 3 and 6 are the same lesson learned five separate times (OpenCode exiting 0,
 `finish_reason: "error"` inside a 200, `build_pdf.py` printing "image not found" and
@@ -56,6 +60,7 @@ Three loops, one store, one knowledge base. The loops never call each other.
 | 4 | **Submitter** | Fill the portal or send the email, upload, confirm | Human-triggered only | **new** |
 | 5 | **Notifier** | Tell Alp what happened | Autonomous | `bot.ts` |
 | 6 | **Viewer** | Serve `applications/<slug>/` read-only over the tailnet | Autonomous | `advocate-data/apply/viewer.ts` (F10) |
+| 7 | **Motivation researcher** | Propose true, sourced reasons to admire this employer | Autonomous behind an *advisory* gate | `advocate-data/apply/motivate.ts` (F11) - **new** |
 | S | **Store** | Every record's state, and the one place the loops meet | n/a | `applications.json` today, Postgres proposed (F5) |
 | K | **Knowledge base** | Dossier, `claims.yaml`, phrasings, templates | n/a | `advocate-data` + `migrations/001_claims.sql` |
 
@@ -456,6 +461,88 @@ Opus 5 tier with prompt caching) come first, as one bucket. Then deploy, then co
 **Rejected: going straight to the submitter,** accepting F1 and F5 as gaps to close along
 the way. Fastest to an end-to-end application and the highest risk of exactly the two
 silent failures this record exists to prevent.
+
+## F11. The letter has nothing true to admire, so it only talks about Alp. Designed 2026-08-08, not built.
+
+**Symptom, read from the artifacts.** The BMW Anschreiben spends five paragraphs and ~1,050
+words on Alp and never says one thing about BMW that is not a restatement of the job ad. It
+also volunteers a defensive audit of its own gaps (PyTorch "nur im Kurskontext", cloud "ein
+ehrlicher Gap"), which the skill already forbids. Compare `SSI_Schaefer_Bewerbung`, written
+by hand: its first 130 words are entirely about *them* - two friends who work there named,
+the culture observed through one of them, "Sie investieren in Menschen" quoted back off
+their own site - and only then does it turn to Alp. Alp's judgement, 2026-08-08: the BMW
+letter "couldn't be worse", and genuineness, passion and pride in the company are the thing
+to lean into.
+
+**Cause, and it is structural, not a model failure.** `LETTER_TASK` in `stages.py:310` is
+five prohibitions and no purpose; nothing in it says a letter must want the job. SKILL.md's
+90-line Writing craft section is entirely CV-oriented and has no cover-letter rules at all.
+And `analyse` receives only the posting, so the drafter has no company knowledge to be
+genuine *with*. It did exactly what it was asked.
+
+**The new invariant, and why the claim store does not already cover it.** Invariant 2 binds
+every factual sentence to a claim - but the claim store holds facts about *Alp*. A sentence
+of admiration is a fact about the *employer*, and there is no claim id it could ever carry.
+So it needs its own law:
+
+> 7. **No sentence of admiration for a company exists without a source Alp confirmed, or a
+>    page it was quoted from.** Enforced by: `motivation.md` carrying a source per line, the
+>    drafter permitted to draw only on confirmed lines, and `verify.ts` failing a letter
+>    whose motivation paragraph cites nothing.
+
+Generated enthusiasm is the one output worse than the cold letter we have, because it is
+both fake and generic. This invariant is what stops the fix from causing that.
+
+**Component 7, `motivate.ts`** (TS driver side, next to `posting.ts`). After selection and
+posting fetch, before drafting: fetch the company's site, careers page and recent news, and
+write `applications/<slug>/motivation.md` - two to four candidate angles, each one or two
+sentences with the URL it came from. Then the bot proposes them on a card; Alp taps one or
+types his own (a connection, a personal observation - the SSI Schäfer material, which no
+crawler could ever find). The chosen line is marked confirmed, and only confirmed lines
+reach the drafter.
+
+**The gate is advisory with a deadline, not blocking.** This is the load-bearing decision.
+`APPLY_MOTIVATION_WAIT_HOURS` (default 24): past it, the record drafts anyway with the
+motivation state `expired` and the letter written with **no** admiration paragraph, exactly
+as today. Alp travelling for two days must never stall the queue, and a silent human
+dependency in an autonomous loop is how loops die. A letter with no admiration paragraph is
+a worse letter; a loop that stops is a worse system.
+
+Research is autonomous (cheap, reversible, a wrong angle is a bad suggestion, and Alp sees
+every one before it is used). It does **not** move into the Python `analyse` stage: that
+component's whole safety property is that it touches nothing but files, and putting a
+network fetch behind a model's tool call trades deterministic code for judgment for no gain.
+
+Seams this adds:
+
+| From → To | Carrier | Contract | On failure |
+|---|---|---|---|
+| Selection → Researcher | record at `drafted`, `motivation.state` unset | slug, company, posting URL | No `motivation.md`; drafting proceeds without an angle |
+| Researcher → Gate | `motivation.md` + `motivation.state = "proposed"` | 2-4 angles, each with a source URL | Bot announces next pass; `motivation.notifiedAt` set only after Telegram confirms |
+| Gate → Drafter | `motivation.state = "confirmed"` + `chosen` | one angle, verbatim, plus its source | Deadline passes → `expired`, drafter omits the paragraph |
+| Drafter → Verifier | the letter's motivation paragraph | must cite a confirmed angle or not exist | `verify.ts` fails the draft, same as any other check |
+
+**Rejected: a new `ApplicationStatus` value** (`awaiting_motivation`). The record is not an
+application yet at this point, and the status union is the *send* lifecycle - `assertSendable`
+and every exhaustive switch reason over it. A pre-draft phase belongs in its own field, not
+overloaded onto the one union that guards the irreversible action.
+
+**Rejected: a blocking gate.** Ruled out by the constraint above, and it would have made
+Alp's response time the loop's throughput limit.
+
+**Rejected: Alp writes the angle for every company, with no research** (his option B). It
+guarantees truth, which is the whole point, but costs him minutes per application and puts a
+human in front of every draft. Research-proposes keeps the loop moving and still cannot
+invent, because nothing unconfirmed is ever used.
+
+**Rejected: prompt fix alone.** Cheapest, ships today, and caps the letter at admiring
+whatever the job ad says about the company - which is what produced the BMW letter. Worth
+doing, but as bucket 1 of this, not instead of it.
+
+**Build order.** Bucket 1: the cover-letter craft rules in SKILL.md plus a rewritten
+`LETTER_TASK` that states the letter's purpose and forbids the volunteered-gap audit. That
+alone fixes the self-centred structure and can be measured by redrafting BMW. Bucket 2:
+`motivate.ts`, the record field and the card. Bucket 3: the `verify.ts` citation check.
 
 ## Open questions
 

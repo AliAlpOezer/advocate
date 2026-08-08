@@ -317,6 +317,16 @@ URL:      {url}
 Call write_document with the finished contents of the cover letter's <body>. Body
 only - the shell and the CSS are kept for you.
 
+What this document is for. The Lebenslauf already proves he can do the job; it is
+attached and the reader has it. The letter answers the question the CV cannot: why
+{company}, and why he would be glad to work there. A letter that only argues
+competence is a worse copy of its own attachment, so it fails this stage even when
+every sentence in it is true.
+
+Read the skill's "The Anschreiben" section before writing. The shape it specifies:
+them, the bridge, the evidence, forward. Four or five short paragraphs, 350-450
+words, one page.
+
 Rules, all checked mechanically the moment you write:
   - It must name {company} and the role it is applying for.
   - Not one word of the previous employer's letter survives. It is a different
@@ -325,6 +335,22 @@ Rules, all checked mechanically the moment you write:
     does not repeat the CV line by line.
   - Every factual sentence traces to the dossier or a claim id.
   - No em dash anywhere.
+
+Rules this stage is judged on that no checker can see, so they are on you:
+  - Open on {company}, not on Alp. If the first paragraph could be pasted into a
+    different company's letter unchanged, it is not written yet.
+  - Say nothing admiring about {company} that you cannot source. A sentence about
+    the employer can never carry a claim id, so the one law bites hardest here.
+    Use the confirmed angle in motivation.md if the folder has one; if it does
+    not, write no admiration paragraph at all. An invented one is worse than none
+    and is recognisable on sight.
+  - Enthusiasm is carried by a specific detail, never by an adjective.
+    "beeindruckend", "führend", "spannend", "innovativ" are what someone writes
+    when they have nothing concrete.
+  - Do not volunteer gaps. Naming what the evidence does not cover is
+    {strategy}'s job, written for Alp and never sent. Address a gap here only
+    when the posting makes it unavoidable, in one forward-looking clause. Never a
+    list, never a paragraph, and never a disclaimer nobody asked for.
 
 === {strategy}, written in stage 1 ===
 {strategy_text}
