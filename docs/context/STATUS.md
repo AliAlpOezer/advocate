@@ -128,12 +128,30 @@ graded it and no review card had been sent.** Check the outcome before assuming 
 ssh alpiclawd 'systemctl is-active apply-draft.service; tail -20 "$(ls -t /srv/advocate-data/apply/state/draft-logs/* | head -1)"'
 ```
 
-**`claims` is now the binding stage, and it is a pre-existing problem, not the drift.** It
-took 330s on 2026-08-07 and was past 18 minutes here. It is the stage `apply-send-loop.md`
-already records as "not landing on the free route", and the likely reason Vodafone burned
-all three attempts with both its documents drafted. If BMW parks at 3 too, fix `claims`
-before spending more attempts - and note the open-reasoning finding above is a live
-candidate cause.
+**Final outcome of that run: `claims` failed, everything above it passed.**
+
+```
+analyse:      skipped        draft_cv: ok 723.2s, 1 turn      draft_letter: ok 127.7s, 1 turn
+claims:       FAILED 2407.7s, 0 turns, 0 tool calls - every tier, key 1/7 only
+```
+
+**The rotation question is now settled, and the answer is that rotation was never the
+fix.** The probe was re-run minutes after this failure, against the same model that had
+just failed on key 1: **7/7 keys OK**. Same key, same model, same window - a short request
+succeeds while the real `claims` request returns `finish_reason='error'`. So the failure is
+**request-shape dependent**, not per-key and not upstream capacity, and exhausting all
+seven keys would have failed seven times instead of one.
+
+`claims` preloads 65,987 chars (it runs with `needs_skill=False`) and asks for a long
+generation - the hand-validated map is 72 lines, the BMW one was 254. Combined with
+nemotron-3 reasoning in the open, the model burns its budget thinking and never emits the
+tool call, which is exactly the `no content and no tool call` signature. **Fix the request,
+not the provider policy**: shrink what `claims` is given, cap or disable the reasoning
+budget, or move this one stage to the paid rung. Do not spend more attempts before then -
+this is also the likely reason Vodafone parked at 3 with both its documents drafted.
+
+`render` needs no model at all (1.4s, deterministic), so `claims` is the only real blocker
+between a drafted application and a review card.
 
 **Next session starts here: re-run BMW by hand and get the first review card.** The fix is
 deployed on the box (`/srv/advocate` at `065b018`) and the contaminated artifacts are
