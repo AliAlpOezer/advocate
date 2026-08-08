@@ -73,8 +73,22 @@ traffic the loop has produced about an application is the give-up notice from
 `select.ts:91`. So the PDF-attachment path, and now the folder link, are correct in code
 and **unexercised in production**.
 
-Next: the key-rotation predicate, then the first real card end to end, then component 4
-(the submitter).
+**Next session starts here, and it is a measurement, not an edit.** Alp's call 2026-08-08:
+run `scripts/probe_key_rotation.py` on the box before touching the rotation predicate.
+
+```
+ssh alpiclawd
+cd /srv/advocate && set -a; . /etc/advocate-apply/daemon.env; set +a
+.venv/bin/python scripts/probe_key_rotation.py        # add --alt for the tier-2 model
+```
+
+It sends one short request per key, sequentially, and prints PER-KEY, UPSTREAM or
+INCONCLUSIVE. PER-KEY → rotate on `finish_reason='error'` and exhaust the tier's keys before
+dropping. UPSTREAM → the current policy is already right and the fix is a different tier-1
+model or the paid rung. INCONCLUSIVE means the failure was not reproducing; re-run when the
+drafter is actually failing. Do not change `providers.py` before this prints something.
+
+Then: the first real review card end to end, then component 4 (the submitter).
 
 Phase C (tailored CV/cover-letter drafting) is underway; first validation run complete.
 CSS → design system and HTML → Jinja templates remain queued behind it, per the
