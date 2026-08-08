@@ -85,20 +85,56 @@ Note the two Alibaba keys already in the repo `.env` are *not* interchangeable: 
 bound to its own host and returns 401 against the others, and only the plan-specific one
 has any entitlement. Table in `decisions.md`.
 
-## Next session starts here — the CV rework, asked for 2026-08-08
+## The CV rework, asked for 2026-08-08 — three of four rules written
 
-The loop works; the output is now the thing to improve. Alp's asks, verbatim in intent:
+Asks 1-3 are **written into `advocate-data/.claude/skills/cv-drafter/SKILL.md`** and are
+uncommitted there pending Alp's review. Note the deploy coupling: the box pulls
+`advocate-data` master `--ff-only` every tick, so committing to master ships them to the
+live drafter on the next run.
 
-1. **The two marathons must be bold in every CV.** A standing formatting rule, so it
-   belongs in `cv-drafter`'s SKILL.md in `advocate-data`, not in a single application.
-2. **A bolder, more self-confident tone throughout.** This is explicitly *inside* the
-   rules, not a bend of them: the objective section below already says framing, ordering
-   and emphasis are his to push hard, and only checkable facts are fixed. Push the
-   framing; do not let it pull a fact.
-3. **Consider an "About me" / profile section.** Inspiration, not a copy, from
-   `C:\Users\alial\OneDrive\Desktop\Resume_Project\Ali_Alp_Ozer_Resume.pdf`. He also
-   pasted ~18 lines of reference wording that **did not reach the session - ask him to
-   paste it again**, it is not recoverable from here.
+1. **The marathons are bold in every CV.** Done, in Writing craft. It is a markup change,
+   not just a directive: they currently sit unemphasised at the tail of the run-on
+   `Erfolge` line in `_template`, behind a `·` separator.
+2. **A bolder, more self-confident tone throughout.** Done, in Writing craft, framed
+   explicitly as *inside* the one law - framing pushes, checkable facts do not move.
+3. **A profile section.** Done - a new `## The profile section` in SKILL.md, mandatory and
+   rewritten per posting. Two things settled while writing it:
+   - **The markup already exists.** `<p class="profil">` at the top of `_template`'s main
+     column, unheaded, left accent bar. So the reference PDF
+     (`Resume_Project/Ali_Alp_Ozer_Resume.pdf`, section `ÜBER MICH`) is the model for
+     register and shape only, *not* layout - it heads the block and right-columns it.
+     The template's generic paragraph counts as a template leftover; not rewriting it is
+     a drafting failure.
+   - **Named concepts belong in this block and nowhere else on the CV**, and naming them
+     is the point - MVC-structured frontend, ReAct-structured LangGraph agents, RAG with
+     a measured baseline, MCP. Bound by warrant, not by permission: name one where the
+     posting makes it load-bearing, cut it where the paragraph does not lose anything.
+     Alp's framing is that a parade of patterns reads as someone who has read about them.
+     The traceability rule applies as it does everywhere, and is rarely the binding
+     constraint - these are patterns he has shipped, and MVC is already explicit in the
+     experience bullets of his own CV.
+
+   The ~18 lines of reference wording he pasted never reached either session. **Stop
+   asking for them** - the screenshot of the CV supplied the same material.
+
+   **Enforced, not just written.** `verify.ts` gained check 1b plus an exported
+   `profileParagraph()`: the CV's `.profil` block must exist, be at least 200 chars, and
+   differ from `_template`'s. The whole-file byte check could not catch this - rewrite
+   every bullet, leave the profile, and the file is byte-different, so it passed. The
+   comparison is on extracted text, so reflowing and adding `<strong>` do not read as a
+   change. **26 TypeScript tests pass, was 22.** Checked against all five existing
+   applications: BCG, BMW, Temedica and Vodafone all pass; only `SSI_Schaefer` matches the
+   template, because `_template` was cut from it. It is already sent and never re-verified.
+
+   `_template` itself was updated in the same pass: marathons bolded, HF certificate added.
+
+**The Hugging Face Agents Course is done - Certificate of Excellence, 2026-08-04.** It was
+listed as "in progress" in four places, all now moved to completed: `EVIDENCE_DOSSIER.md`
+§6 (and the §7 Hugging Face skill line, which said "certification in progress" and would
+have contradicted it), `master_resume_de.md`, `master_resume_en.md`, and `_template`'s
+`Zertifikate` block. It is a completed credential and lists as one; it does not upgrade
+the HF *skill* line, which is about the Hub, not agents. No public verification URL was
+captured - Alp holds the certificate image. Not yet in `claims/claims.yaml`.
 4. **Use the Alibaba models now that they are proven.** See `decisions.md` for which key
    reaches what. Requires Alp to put `ALIBABA_PLAN_SPESIFIC_SECRET` and its base URL into
    `/etc/advocate-apply/daemon.env` first; the harness refuses to let an agent pipe a
