@@ -39,8 +39,37 @@ Three turns, not one: the model spends its first turns on `list_files`/`read_fil
 writing. That is fine - the stage allows five - but it means a probe that stops after one
 turn cannot tell this route from a broken one.
 
-**Still worth doing: move `claims` to the Alibaba plan rung.** 1,109s for one stage is
-slow, and the free route has no headroom. `ALIBABA_PLAN_SPESIFIC_SECRET` against
+**The Alibaba plan key is deployed on the box (2026-08-08) and is NOT yet proven for this
+stage.** `/etc/advocate-apply/daemon.env` now carries `ALIBABA_API_KEY` (the plan-specific
+secret) and `ALIBABA_BASE_URL`. Auth and URL are verified. But the real claims request
+against `qwen3.8-max` **timed out at 660s from the box** - not a 403, not the laptop's
+network, just no reply. A small tool-bound request to the same model answers in seconds, so
+the model works and the long generation is what does not fit in 660s.
+
+Do not wire it in until it is measured. The next two commands, in order:
+
+```
+ssh alpiclawd 'cd /srv/advocate && set -a && . /etc/advocate-apply/daemon.env && set +a && \
+  .venv/bin/python -u scripts/probe_claims_request.py --repo /srv/advocate-data \
+  --slug BMW_Group_Junior_Agentic_AI_Engineer_limited_Bewerbung \
+  --base-url "$ALIBABA_BASE_URL" --model qwen3.8-max --key-env ALIBABA_API_KEY \
+  --only baseline --timeout 900'          # 900 matches the drafter's own turn bound
+# then the same with --model deepseek-v4-pro
+```
+
+For scale: laguna takes 1,109s over three turns and works, so "slow" is normal here and 660s
+was simply the wrong bound to judge by.
+
+**Trap, cost 20 minutes:** writing `daemon.env` from Windows inserts CRLF, and `\r` silently
+corrupts both the key and the URL (`.../v1\r/chat/completions`). Backup of the pre-edit file
+is at `alpiclawd:/root/daemon.env.bak-2026-08-08`. Strip with `sed -i 's/\r$//'`.
+
+`~/.claude/settings.json` now allows `Bash(ssh alpiclawd *)` and `Bash(scp * alpiclawd:*)`.
+These are **prefix** matches, so a command must literally start with `ssh`/`scp` - piping
+into ssh does not match and is still refused by the auto-mode classifier.
+
+**Why bother: 1,109s for one stage is slow and the free route has no headroom.**
+`ALIBABA_PLAN_SPESIFIC_SECRET` against
 `https://token-plan.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1` reaches **seven
 models, all of which tool-call**, including `qwen3.8-max` and `deepseek-v4-pro`. It was
 not wired in because the probe against it could not be completed from the laptop (see the
