@@ -111,25 +111,45 @@ traffic the loop has produced about an application is the give-up notice from
 `select.ts:91`. So the PDF-attachment path, and now the folder link, are correct in code
 and **unexercised in production**.
 
+**The fix is confirmed end to end on the box, 2026-08-08 13:38.** BMW was reset to a clean
+scaffold (both documents restored from `_template`, `draftAttempts` 0) and re-run by hand:
+
+```
+13:50  Lebenslauf  14,016 -> 14,729 bytes   DRAFTED   (~12 min, first CV this loop has made for BMW)
+13:52  Anschreiben  5,526 ->  7,986 bytes   DRAFTED
+13:52  claims stage, still running at 14:10 (18+ min)
+```
+
+`draft_cv` had never executed once since the drift; it ran and wrote a real document. That
+settles the fix. **The run had not finished when this was written - `verify.ts` had not yet
+graded it and no review card had been sent.** Check the outcome before assuming success:
+
+```
+ssh alpiclawd 'systemctl is-active apply-draft.service; tail -20 "$(ls -t /srv/advocate-data/apply/state/draft-logs/* | head -1)"'
+```
+
+**`claims` is now the binding stage, and it is a pre-existing problem, not the drift.** It
+took 330s on 2026-08-07 and was past 18 minutes here. It is the stage `apply-send-loop.md`
+already records as "not landing on the free route", and the likely reason Vodafone burned
+all three attempts with both its documents drafted. If BMW parks at 3 too, fix `claims`
+before spending more attempts - and note the open-reasoning finding above is a live
+candidate cause.
+
 **Next session starts here: re-run BMW by hand and get the first review card.** The fix is
 deployed on the box (`/srv/advocate` at `065b018`) and the contaminated artifacts are
-cleared, so the next tick should draft a real CV.
+cleared.
 
 ```
 ssh alpiclawd
 systemctl start --no-block apply-draft.service   # ~6 min, watch: journalctl -fu apply-draft
 ```
 
-Two decisions are open before that run and both are Alp's:
+Both open decisions were settled by Alp on 2026-08-08 and are already applied: the letter
+drafted against the template CV was discarded, and `draftAttempts` was reset to 0.
 
-1. **BMW's `Anschreiben_Ali_Alp_Oezer.html` was drafted against the template CV**, because
-   `_letter_task` feeds the CV body in as context and the CV was still the scaffold. It is
-   kept, so `draft_letter` will skip it. Delete it to force a coherent redraft, or accept
-   it. Recommendation: delete - a letter written against a CV that did not exist is not
-   worth the coin-flip.
-2. **`draftAttempts` is at 2 of 3**, both burned entirely by this bug. Left as-is, one more
-   failure parks BMW like Vodafone. Recommendation: reset to 0 in
-   `apply/data/applications.json`.
+**Restore a document to scaffold state by copying `_template`'s copy in, never by deleting
+it.** `write_document` splices a body into the existing shell, so an absent file fails the
+stage for a reason that has nothing to do with drafting.
 
 Backup of everything removed: `alpiclawd:/root/advocate-cleanup-2026-08-08/`.
 
