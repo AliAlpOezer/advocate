@@ -56,6 +56,31 @@ Note the two Alibaba keys already in the repo `.env` are *not* interchangeable: 
 bound to its own host and returns 401 against the others, and only the plan-specific one
 has any entitlement. Table in `decisions.md`.
 
+## Next session starts here — the CV rework, asked for 2026-08-08
+
+The loop works; the output is now the thing to improve. Alp's asks, verbatim in intent:
+
+1. **The two marathons must be bold in every CV.** A standing formatting rule, so it
+   belongs in `cv-drafter`'s SKILL.md in `advocate-data`, not in a single application.
+2. **A bolder, more self-confident tone throughout.** This is explicitly *inside* the
+   rules, not a bend of them: the objective section below already says framing, ordering
+   and emphasis are his to push hard, and only checkable facts are fixed. Push the
+   framing; do not let it pull a fact.
+3. **Consider an "About me" / profile section.** Inspiration, not a copy, from
+   `C:\Users\alial\OneDrive\Desktop\Resume_Project\Ali_Alp_Ozer_Resume.pdf`. He also
+   pasted ~18 lines of reference wording that **did not reach the session - ask him to
+   paste it again**, it is not recoverable from here.
+4. **Use the Alibaba models now that they are proven.** See `decisions.md` for which key
+   reaches what. Requires Alp to put `ALIBABA_PLAN_SPESIFIC_SECRET` and its base URL into
+   `/etc/advocate-apply/daemon.env` first; the harness refuses to let an agent pipe a
+   credential over ssh. Worth considering for the drafting stages too, not only `claims`
+   - but re-read the warning in `decisions.md` about swapping the model that writes the
+   documents, and change one thing at a time.
+
+Constraints that still bind any tone change: no em dash anywhere, city only and never a
+street address or commute argument, and every factual sentence traceable. `verify.ts` and
+`stages.py` both enforce these mechanically and will fail the draft rather than soften it.
+
 **The test suite was never running.** Fourteen of eighteen tests errored on a `tmp` fixture
 that was never defined; "18 Python tests pass" counted collected tests and four ran. Fixed
 in the same commit - **21 pass and execute**. `pytest` is not installed in the box's venv,
