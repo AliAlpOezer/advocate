@@ -30,37 +30,59 @@ perform its check must raise, never return a falsy sentinel.** When two componen
 the same fact, pin one to a literal in a test - a fixture derived from the constant cannot
 see it drift.
 
-### Every tier of the drafting chain fails
-Cause: **the chain only ever tries key 1, whatever the key count.** Corrected 2026-08-08;
-this entry previously said "two keys is not enough, add the other five" and that was
-wrong - all seven were deployed and it changed nothing. Key rotation fires on **429 only**.
-A `finish_reason='error'` reply advances the **tier** instead, so the chain spends itself
-in four calls and six of seven keys are never tried:
+### The `claims` stage fails on every tier with 0 turns and 0 tool calls
+Cause: **the free nemotron route cannot deliver a large tool call.** Settled by experiment
+2026-08-08 with `scripts/probe_claims_request.py`, which replays the real request. Not the
+keys, not capacity, not the reasoning budget, and not the size of the preload:
 
 ```
-openrouter[key 1/7]     nemotron-3-ultra: finish_reason='error' → retry → same → next tier
-openrouter-alt[key 1/7] nemotron-3-super: finish_reason='error' → retry → same → next tier
+baseline (as the drafter sends it)   0/4 usable turns   finish_reason='error' @ ~130s
+reasoning effort=minimal                  failed        154 reasoning tokens then error
+reasoning enabled=false                   failed
+reasoning max_tokens=1024                 failed        451 reasoning tokens then error
+only write_file offered              0/3 usable turns   one truncated mid-JSON @ 12,265 ch
+the identical request with NO tools       OK            8,462 tokens, finish='stop', 434s
 ```
 
-Measured on the box 2026-08-07 19:33 (BMW). **Do not read this as the reason a draft comes
-back empty** - that was the 2026-08-07 diagnosis and it was wrong. The entry above is why no
-CV was ever written, and it fires with a perfectly healthy provider chain. Re-probed
-2026-08-08 across both tiers: 14/14 key-model pairs OK, so the 19:33 failure was transient
-upstream capacity. Note the interaction with the entry below: `finish_reason='error'` is *already* recognised
-as a provider failure, so the bug is not detection, it is which axis the failure advances.
-Fix: **not simply "rotate on error too" - that is the trap.** `providers.py`'s docstring
-records a deliberate three-way policy: 429 rotates the key, 5xx/timeout retries once then
-advances the *tier*, and 401/403/404/400 abandons the tier without touching another key.
-`finish_reason='error'` arrives as an HTTP 200 with a bad body, so it currently lands in
-the middle bucket - and the stated reason for that bucket is that "rotating keys against a
-saturated upstream just spends the pool to hit the same wall." If this failure is NVIDIA
-capacity, the current behaviour is right and burning seven keys is wrong.
+The last line is the whole diagnosis: at full size the route generates 29,180 chars of
+prose happily, and dies only when the same content must come back inside a tool call.
+Fix: give the stage a route that can - `stages.CLAIMS_MODEL`, tried ahead of the free
+chain by `ChainedChat._chain_for`. Do **not** reach for the reasoning knobs; all three
+were measured dead here, and nothing is burning a budget (150-450 reasoning tokens, not
+thousands).
 
-**The open question is which it is, and it is settled by experiment, not by reading.** Fire
-the same request at key 1 until it returns `finish_reason='error'`, then immediately at key
-2. If key 2 succeeds it is per-key and rotation is the fix; if it fails identically it is
-upstream and the real fix is a different tier-1 model or a paid rung. Do that before
-changing the predicate. `apply-draft.timer` stays disabled either way.
+### "Shrink the request" looks like it fixes claims, and does not
+Cause: dropping the Anschreiben body gave **3/3 usable turns and 0/3 that wrote the file** -
+all three spent the turn on `list_files`. A probe that counts any tool call as a pass
+reports that as fixed. Worse, the premise was false: `claims` is the **smallest** request
+in the pipeline, not the largest, and the two stages that succeed are bigger.
+
+```
+analyse  92,673    draft_cv 111,999 ok    draft_letter 118,018 ok    claims 85,240 FAILED
+```
+
+Both `stages.py` and `prompt.py` asserted claims was the biggest; that wrong belief is what
+aimed the first two attempted fixes at nothing. Fix: judge a drafting probe on whether the
+**write** happened, not on whether a reply came back.
+
+### A long request from the laptop dies at 2-8 minutes with WinError 10054
+Cause: `ConnectionResetError` on non-streaming requests that run long - seen at 137s, 456s
+and 470s against three different hosts, while the same request from `alpiclawd` completed in
+434s. Something between this laptop and the internet drops an idle-looking socket.
+Fix: run long probes on the box, not the laptop. It is not the provider, and retrying from
+here just burns the wall clock again.
+
+### The Python suite reports far more tests than it runs
+Cause: fourteen of the eighteen tests in `tests/test_draft_pipeline.py` take a `tmp`
+fixture that **was never defined anywhere** - no `conftest.py` has ever existed in this
+repo. pytest reports that as an ERROR at setup, not a failure, and a summary line reads
+past it. "18 Python tests pass" in STATUS was a count of *collected* tests; four ran. The
+tests written to catch the TEMPLATE_SLUG drift were among the fourteen that never
+executed.
+Fix: fixed 2026-08-08 - the fixture is defined in the test file, 21 tests pass and run.
+The general rule is the one this repo keeps relearning: **a check that stops being
+performed reports the same as a check that passes.** Read the count, not the colour.
+Note `pytest` is not installed in the box's venv, so the suite only runs on the laptop.
 
 ### A link added to the review card vanishes the moment a button is tapped
 Cause: two separate Telegram constraints, both found 2026-08-08. `InlineButton` in

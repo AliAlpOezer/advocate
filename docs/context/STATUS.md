@@ -1,6 +1,60 @@
 # Status — advocate
 
-Last updated: 2026-08-07
+Last updated: 2026-08-08
+
+## Read this first — the claims blocker, settled
+
+**`claims` failed because the free nemotron route cannot deliver a large tool call.**
+Settled 2026-08-08 by replaying the real request (`scripts/probe_claims_request.py`), not
+by reasoning. The full evidence table is in `gotchas.md`; the short form is that the
+identical 85,240-char request succeeds with the tools removed (8,462 tokens, `finish='stop'`)
+and returns `finish_reason='error'` 0/4 times with them.
+
+**All three fixes proposed on the previous line were measured and are wrong.** Capping or
+disabling the reasoning budget: dead, three ways, and nothing was burning a budget in the
+first place (150-450 reasoning tokens, not thousands). Shrinking the 65,987-char preload:
+dead, and its premise was false - `claims` is the *smallest* request in the pipeline at
+85,240 chars, while `draft_letter` succeeds at 118,018. Moving to the paid rung: still
+correct in spirit, but every paid path is blocked on Alp (see below).
+
+**Shipped (`97954af`, deployed to the box): a stage may name its own route.**
+`stages.CLAIMS_MODEL` is tried ahead of the free chain; the drafting stages keep the
+default because they work and their German has been approved. Rationale in `decisions.md`.
+
+**Open, and the next thing to do.** `CLAIMS_MODEL` currently points at
+`poolside/laguna-s-2.1:free`, chosen on a single probe sample - it produced a usable turn
+on the identical request in 13.6s where nemotron produced none, but it was a `list_files`
+call and it has **never been observed writing the file**. That is thin evidence and it is
+knowingly thin.
+
+The better target arrived late: `ALIBABA_PLAN_SPESIFIC_SECRET` against
+`https://token-plan.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1` reaches **seven
+models, all of which tool-call**, including `qwen3.8-max` and `deepseek-v4-pro`. It was
+not wired in because the probe against it could not be completed from the laptop (see the
+WinError 10054 gotcha) and the key is not on the box - piping a credential over ssh was
+refused by the harness, so **Alp has to place it in `/etc/advocate-apply/daemon.env`
+himself.** Once it is there:
+
+```
+ADVOCATE_CLAIMS_MODEL=qwen3.8-max          # plus the base URL and key, wired as a tier
+```
+
+Note the two Alibaba keys already in the repo `.env` are *not* interchangeable: each is
+bound to its own host and returns 401 against the others, and only the plan-specific one
+has any entitlement. Table in `decisions.md`.
+
+**A BMW run was started at 15:34 UTC and its outcome was never seen** - the session ended
+with the agent still on the claims stage, ~14 minutes in, no `claims-used.md` on disk. Check
+before assuming anything:
+
+```
+ssh alpiclawd 'systemctl is-active apply-draft.service; tail -20 "$(ls -t /srv/advocate-data/apply/state/draft-logs/* | head -1)"'
+```
+
+**The test suite was never running.** Fourteen of eighteen tests errored on a `tmp` fixture
+that was never defined; "18 Python tests pass" counted collected tests and four ran. Fixed
+in the same commit - **21 pass and execute**. `pytest` is not installed in the box's venv,
+so the suite runs on the laptop only.
 
 ## Current focus
 
@@ -142,13 +196,12 @@ succeeds while the real `claims` request returns `finish_reason='error'`. So the
 **request-shape dependent**, not per-key and not upstream capacity, and exhausting all
 seven keys would have failed seven times instead of one.
 
-`claims` preloads 65,987 chars (it runs with `needs_skill=False`) and asks for a long
-generation - the hand-validated map is 72 lines, the BMW one was 254. Combined with
-nemotron-3 reasoning in the open, the model burns its budget thinking and never emits the
-tool call, which is exactly the `no content and no tool call` signature. **Fix the request,
-not the provider policy**: shrink what `claims` is given, cap or disable the reasoning
-budget, or move this one stage to the paid rung. Do not spend more attempts before then -
-this is also the likely reason Vodafone parked at 3 with both its documents drafted.
+~~`claims` preloads 65,987 chars and asks for a long generation, so the model burns its
+budget thinking and never emits the tool call.~~ **Superseded 2026-08-08 - this paragraph
+was wrong and is kept only so the wrong idea is not re-derived.** Nothing was burning a
+reasoning budget, and the preload was never the problem; see the top of this file. Vodafone
+parking at 3 with both documents drafted is still probably the same defect, and it should
+re-run once `claims` is proven.
 
 `render` needs no model at all (1.4s, deterministic), so `claims` is the only real blocker
 between a drafted application and a review card.

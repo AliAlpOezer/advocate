@@ -237,3 +237,38 @@ key then advance the tier, because both observed failures were NVIDIA-side capac
 rotating keys against a saturated upstream just spends the pool to hit the same wall;
 401/403/404 abandons the tier immediately without touching another key, which is Alp's
 original rule preserved for the case it was written for.
+
+**A stage may name its own route, and only `claims` does.** 2026-08-08. The pipeline's
+stages are not interchangeable workloads: `claims` is the one that must return a large
+tool-call argument, and the free nemotron rungs cannot do that at any request size we can
+reach (see `gotchas.md`). `Stage.model` is tried ahead of the free chain by
+`ChainedChat._chain_for`; the drafting stages deliberately keep the chain's default,
+because they work on it and their German has been read and approved. Swapping the model
+that writes the documents on evidence gathered about a different stage is precisely the
+drift this pipeline has already been burned by twice. An escalation Alp paid for still
+outranks the preference, and the free chain stays underneath it as fallback so a rate
+limited preference degrades rather than fails.
+
+**Provider access, measured 2026-08-08 - what is actually reachable.** Recorded because
+all of it was found by probing and none of it is visible from a catalogue or a doc.
+
+- **OpenRouter has no credit.** `/credits` reports `total_credits: 0`,
+  `is_free_tier: true`. So `ADVOCATE_DRAFT_MODEL` without `:free` - the move
+  `providers.py` documents as "the intended move once OpenRouter credit exists" - is not
+  available until Alp tops it up.
+- **There is still no `ANTHROPIC_API_KEY`**, on the box or the laptop, so the escalation
+  rung remains unreachable in practice.
+- **Alibaba Model Studio: the catalogue is not the entitlement.** Three keys, three
+  different hosts, and only one combination is usable. `/models` lists everything the
+  region serves; calling an unentitled model answers `403 AccessDenied.Unpurchased`.
+
+  | key | host | listed | reachable |
+  |---|---|---|---|
+  | `ALIBABA_API_KEY` | `ws-hxm3cepai37rlhfn.eu-central-1` | 79 | 1 (`qwen-plus-character`) |
+  | `ALIBABA_API_KEY_SINGAPORE` | `dashscope-intl` | 156 | 0 |
+  | `ALIBABA_PLAN_SPESIFIC_SECRET` | `token-plan.ap-southeast-1` | 11 | **7, all tool-calling** |
+
+  The last row is the useful one: `qwen3.8-max`, `qwen3.7-max`, `qwen3.7-plus`,
+  `qwen3.6-flash`, `deepseek-v4-pro`, `deepseek-v4-flash-0731`, `glm-5.2`. Each key is
+  bound to its own host - every key returns 401 against the other two - so a key without
+  its matching base URL looks exactly like a dead key.
