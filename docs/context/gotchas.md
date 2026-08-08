@@ -31,9 +31,19 @@ Measured on the box 2026-08-07 19:33 (BMW). The run burned **1594s and never edi
 scaffold**; `verify.ts` failed it on all four counts including byte-identical-to-template.
 Note the interaction with the entry below: `finish_reason='error'` is *already* recognised
 as a provider failure, so the bug is not detection, it is which axis the failure advances.
-Fix: rotate the key on `finish_reason='error'` and on empty replies, not only on 429 -
-exhaust the keys within a tier before dropping to the next. **Adding capacity of any kind
-does not help until this is fixed.** `apply-draft.timer` stays disabled until it is.
+Fix: **not simply "rotate on error too" - that is the trap.** `providers.py`'s docstring
+records a deliberate three-way policy: 429 rotates the key, 5xx/timeout retries once then
+advances the *tier*, and 401/403/404/400 abandons the tier without touching another key.
+`finish_reason='error'` arrives as an HTTP 200 with a bad body, so it currently lands in
+the middle bucket - and the stated reason for that bucket is that "rotating keys against a
+saturated upstream just spends the pool to hit the same wall." If this failure is NVIDIA
+capacity, the current behaviour is right and burning seven keys is wrong.
+
+**The open question is which it is, and it is settled by experiment, not by reading.** Fire
+the same request at key 1 until it returns `finish_reason='error'`, then immediately at key
+2. If key 2 succeeds it is per-key and rotation is the fix; if it fails identically it is
+upstream and the real fix is a different tier-1 model or a paid rung. Do that before
+changing the predicate. `apply-draft.timer` stays disabled either way.
 
 ### A link added to the review card vanishes the moment a button is tapped
 Cause: two separate Telegram constraints, both found 2026-08-08. `InlineButton` in
