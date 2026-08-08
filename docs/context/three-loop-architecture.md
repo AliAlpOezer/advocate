@@ -55,6 +55,7 @@ Three loops, one store, one knowledge base. The loops never call each other.
 | 3 | **Gate** | Show the rendered PDFs, take approve / revise, capture the reason | Human | `advocate-data/apply/bot.ts` |
 | 4 | **Submitter** | Fill the portal or send the email, upload, confirm | Human-triggered only | **new** |
 | 5 | **Notifier** | Tell Alp what happened | Autonomous | `bot.ts` |
+| 6 | **Viewer** | Serve `applications/<slug>/` read-only over the tailnet | Autonomous | `advocate-data/apply/viewer.ts` (F10) |
 | S | **Store** | Every record's state, and the one place the loops meet | n/a | `applications.json` today, Postgres proposed (F5) |
 | K | **Knowledge base** | Dossier, `claims.yaml`, phrasings, templates | n/a | `advocate-data` + `migrations/001_claims.sql` |
 
@@ -79,6 +80,8 @@ the submitter and, in F6, across the repo boundary.
 | Gate → Drafter | record back to `drafted`, `draftTier` incremented, `revisionReason` set | the reason, verbatim | Nothing sends; the queue just does not advance |
 | Gate → Submitter | record at `approved` + `approvedArtifactHash` | frozen bytes | `assertSendable` throws |
 | Submitter → Notifier | record at `sent` or `send_failed` + `confirmation` | ref, company, evidence | Alp is told, with the failure reason |
+| Gate → Viewer | `APPLY_VIEWER_BASE_URL` in the card text | `<base>/a/<slug>` | Unset → no link; review proceeds on the attached PDFs |
+| Viewer → Store | reads `applications.json` per request | read-only, never writes | Stale page; the attachments are unaffected |
 
 **Dependency direction.** `advocate` (public engine, policy, schema, renderer) must not
 depend on `advocate-data` (private data). Today it is inverted: `advocate-data/apply/`
@@ -264,6 +267,54 @@ third loop is where the temptation appears.
 confirmation email where one arrives. On an unexpected page, a CAPTCHA, or anything the
 adapter does not recognise, it stops and hands the live browser over rather than guessing.
 No CAPTCHA solving, no fingerprint spoofing, no rate-limit evasion - unchanged policy.
+
+### F10. The gate shows two PDFs; the folder holds six files. Built 2026-08-08.
+
+The review card attaches the rendered PDFs and nothing else. `claims-used.md` -
+the file that ties every sentence in the CV back to a claim, and therefore the only
+artifact that lets Alp check invariant 2 rather than trust it - was unreachable from the
+phone, along with `strategy.md`, both HTML sources and every application older than the
+last few messages in the chat.
+
+**Fix: component 6, a read-only viewer** at `advocate-data/apply/src/viewer.ts`, bound to
+loopback and fronted by `tailscale serve` with a real cert. The card gains one line,
+`📂 Open the full folder`, pointing at `<base>/a/<slug>`.
+
+Three properties are load-bearing:
+
+- **It is additive, never load-bearing.** The PDFs are still attached to the card. If the
+  viewer is down, or the tailnet is unreachable, the review happens exactly as it does
+  today. Nothing on the approval path may depend on this process being up.
+- **It never writes and never decides.** No approve buttons: `bot.ts` calls its chat-id
+  check "the security boundary of the whole loop", and a second authorisation surface for
+  an irreversible action is a second thing that has to be exactly right. Tailnet device
+  auth is a different and weaker claim than "this specific Telegram chat". Enforced by
+  `ProtectSystem=strict` with no `ReadWritePaths`, so the kernel refuses a write rather
+  than `viewer.ts` merely not attempting one.
+- **It is the only inbound listener in the package, so it runs as nobody.** `apply-bot`
+  is root with the Telegram token, seven OpenRouter keys and `ANTHROPIC_API_KEY` in its
+  `EnvironmentFile`. Folding an HTTP handler into that process would put a path-traversal
+  or parser bug in reach of all of it, and an unhandled rejection in a request handler
+  would flap the approval gate under `Restart=always`. `apply-viewer.service` runs as an
+  unprivileged user with **no `EnvironmentFile` at all**; the pull-and-build step runs as
+  root via `ExecStartPre=+` and the server that follows cannot write a byte of the checkout.
+
+**Path safety is three ordered checks** in `resolveArtifact()`, and the first is the
+strongest: the slug must name a record in `applications.json`, so the servable URL space is
+enumerated from the store rather than from the filesystem. `_template` and any stray copy
+are therefore not addressable at all. Then a filename whitelist (three extensions, no
+separators, post-decode), then a resolved-path prefix check. Four tests in `selftest.ts`
+cover the misses, including encoded traversal against targets that really exist.
+
+**Rejected: `tailscale funnel`** - one word from `serve` and it publishes the CV, phone
+number and address to the public internet. **Rejected: putting it in `advocate`** per F6's
+boundary rule; F6 governs *control flow*, and a reader of private artifacts in the public
+repo would invert the data dependency and breach invariant 5. **Rejected: nginx autoindex**
+- it would expose whatever is in the directory, carry no record context, and add a
+general-purpose server to narrow by config rather than a whitelist to widen deliberately.
+**Not rejected, not built:** a `/files <slug>` command that re-sends the attachments. About
+ten lines, needs no deploy and no tailnet, and worth having as the offline fallback - but
+it gives attachments, not a folder, and `.md` reads poorly as a Telegram document.
 
 ### F9. Queue depth is the gate's real failure mode.
 

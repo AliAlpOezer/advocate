@@ -30,12 +30,24 @@ running and polling; `/srv/advocate/.venv` exists with `requirements.txt` instal
 the queue cap; the Telegram chat id is set (Bucket 2's last gap, closed). Both suites pass
 **on the box**: 16 Python, 18 TypeScript.
 
-**The drafter cannot finish a document yet, and it is a supply problem, not a code one.**
-The first deployed tick walked its whole failover chain and ran out: one key rate limited,
-the alternate returned `finish_reason='error'` twice. Two OpenRouter keys is not enough to
-run the chain - see `gotchas.md`. Add the other five keys or an `ANTHROPIC_API_KEY` and the
-loop closes. **`apply-draft.timer` is deliberately NOT enabled** until then; enabling it
-would just fire failing runs twice a day.
+**The drafter cannot finish a document yet. Corrected 2026-08-08: it is a code problem,
+not a supply problem.** The earlier reading here - "two OpenRouter keys is not enough, add
+the other five and the loop closes" - was wrong, and adding keys would not have helped.
+
+All seven keys are now deployed, and the 2026-08-07 19:33 tick on BMW proves the defect:
+
+```
+openrouter[key 1/7]     nemotron-3-ultra: finish_reason='error' → retry → same → next tier
+openrouter-alt[key 1/7] nemotron-3-super: finish_reason='error' → retry → same → next tier
+```
+
+**Key rotation fires on 429 only.** `finish_reason='error'` walks the *tiers* instead, so
+the chain exhausted itself in four calls and six of the seven keys were never tried. Fix
+the rotation predicate before adding capacity of any kind. The run burned 1594s and never
+edited the scaffold; `verify.ts` failed it on all four counts including
+byte-identical-to-template, which is invariant 3 working exactly as designed. Vodafone has
+now hit 3 attempts and is parked. **`apply-draft.timer` stays NOT enabled** until the
+rotation is fixed.
 
 **F2 was answered by a button, not built.** A dead listing is now 🚫 Listing gone on the
 review card (plus `/gone <slug>`), which drops the record to `withdrawn`. Component 1b is
@@ -44,7 +56,25 @@ struck. Rationale and the accepted tradeoff are in `three-loop-architecture.md` 
 **F9's queue cap is built**: the drafter skips its tick at 3 pending reviews, resume path
 included.
 
-Next: the five keys, then component 4 (the submitter).
+**F10's artifact viewer is built 2026-08-08, not yet deployed.** Component 6: a read-only
+`viewer.ts` serving `applications/<slug>/` over the tailnet, so the review card's new
+`📂 Open the full folder` line reaches `claims-used.md`, `strategy.md` and the HTML sources
+that an attachment cannot carry - and reaches any application months later, once the chat
+has scrolled. Runs unprivileged with no secrets in its environment and a read-only
+filesystem; `tailscale serve` fronts it. 22 TypeScript tests pass (was 18). Deploy is three
+commands in `apply-viewer.service`'s header plus `APPLY_VIEWER_BASE_URL` in the box's
+`daemon.env`; until that variable is set the bot emits no link, so the halves can land in
+either order.
+
+**No review card has ever been sent.** All four records have `reviewNotifiedAt` unset and
+no `artifactHash`, so `announcePending()` has never fired - the three `sent`/`approved`
+ones predate the bot. The gate is live and has had nothing to show. The only Telegram
+traffic the loop has produced about an application is the give-up notice from
+`select.ts:91`. So the PDF-attachment path, and now the folder link, are correct in code
+and **unexercised in production**.
+
+Next: the key-rotation predicate, then the first real card end to end, then component 4
+(the submitter).
 
 Phase C (tailored CV/cover-letter drafting) is underway; first validation run complete.
 CSS → design system and HTML → Jinja templates remain queued behind it, per the
