@@ -16,16 +16,36 @@ Fix: <what to do>
      a stale gotcha sends agents down a dead path with full confidence. -->
 
 ### Every tier of the drafting chain fails and the draft produces nothing
-Cause: **two OpenRouter keys is not enough to run the chain.** Measured on the box
-2026-08-07, first real deployed tick: tier 1 `openrouter[key 1/1] nemotron-3-ultra-550b`
-rate limited immediately, then `openrouter-alt[key 1/1] nemotron-3-super-120b` returned
-`finish_reason='error'` with no content twice, and the run died with every tier exhausted.
-The failover logic is correct and did its job; there was simply nothing left to fail over
-to. STATUS has long said "the remaining five OpenRouter keys" - this is what their absence
-actually costs, which is the whole loop.
-Fix: add the other five keys to `/etc/advocate-apply/daemon.env` on `alpiclawd`, or set
-`ANTHROPIC_API_KEY` so tier 1 has a paid rung that is not rate limited. Until then the
-drafter deploys and runs but cannot finish a document.
+Cause: **the chain only ever tries key 1, whatever the key count.** Corrected 2026-08-08;
+this entry previously said "two keys is not enough, add the other five" and that was
+wrong - all seven were deployed and it changed nothing. Key rotation fires on **429 only**.
+A `finish_reason='error'` reply advances the **tier** instead, so the chain spends itself
+in four calls and six of seven keys are never tried:
+
+```
+openrouter[key 1/7]     nemotron-3-ultra: finish_reason='error' → retry → same → next tier
+openrouter-alt[key 1/7] nemotron-3-super: finish_reason='error' → retry → same → next tier
+```
+
+Measured on the box 2026-08-07 19:33 (BMW). The run burned **1594s and never edited the
+scaffold**; `verify.ts` failed it on all four counts including byte-identical-to-template.
+Note the interaction with the entry below: `finish_reason='error'` is *already* recognised
+as a provider failure, so the bug is not detection, it is which axis the failure advances.
+Fix: rotate the key on `finish_reason='error'` and on empty replies, not only on 429 -
+exhaust the keys within a tier before dropping to the next. **Adding capacity of any kind
+does not help until this is fixed.** `apply-draft.timer` stays disabled until it is.
+
+### A link added to the review card vanishes the moment a button is tapped
+Cause: two separate Telegram constraints, both found 2026-08-08. `InlineButton` in
+`telegram.ts` carries `callback_data` only and **has no `url` field**, so a link cannot be
+a button without extending the type. And `handleCallback`'s `editMessage` replaces the
+**entire message**, text and keyboard together, with a four-line headline - so the posting
+URL and the folder link are both destroyed on decision, which is exactly when "what did I
+approve?" starts mattering.
+Fix: put links in the card *text* (`parse_mode: "HTML"`, so `<a href>` works), and re-add
+them to the post-decision edit. Both done for the F10 folder link. `disable_web_page_preview`
+is already true, which is load-bearing for tailnet URLs: Telegram's servers cannot reach
+the tailnet, so a preview attempt would fail silently.
 
 ### There is no ANTHROPIC_API_KEY to find on this machine, and looking harder will not help
 Cause: Claude Code runs on subscription OAuth (`claudeAiOauth`), which is not an API key
