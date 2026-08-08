@@ -273,6 +273,39 @@ all of it was found by probing and none of it is visible from a catalogue or a d
   bound to its own host - every key returns 401 against the other two - so a key without
   its matching base URL looks exactly like a dead key.
 
+- **`deepseek-v4-pro` is the claims route. Measured 2026-08-08, and it is the first
+  Alibaba call that ever came back.** Same probe, same key, same 85,240-char request,
+  two models, run in parallel:
+
+  | model | result | latency | tokens |
+  |---|---|---|---|
+  | `deepseek-v4-pro` | **usable turn**, `read_file` with a 79-char argument | **112.5s** | 21,812 in / 6,232 out |
+  | `qwen3.8-max` | nothing, ever | killed at 40+ min | none billed |
+
+  qwen's socket sat `ESTAB` to `47.84.193.37:443` with **zero bytes queued in either
+  direction and zero CPU** for the whole run, and the Model Studio dashboard showed no
+  new tokens - the request is accepted and then never processed. It also blew past its
+  own `--timeout 1500`, so that flag does not bind on this path; assume a hung Alibaba
+  request needs `pkill`, not patience. Note a *small* tool-bound request to qwen answers
+  in seconds, so this is request-shape dependent - the same signature that killed the
+  free nemotron route on this identical request.
+
+  On price the choice is not close: **$0.435/$0.87 per M vs qwen's $2.00/$6.00**, about
+  5x on a realistic three-turn claims stage (~$0.036 vs ~$0.18).
+
+  **The caveat that stops this being proof.** The probe measures **one turn**. laguna
+  spends turns 1-2 on `list_files`/`read_file` before writing, and STATUS already warns
+  that a one-turn probe cannot distinguish a healthy route from a broken one. A
+  `read_file` on turn 1 is exactly what a healthy route does first, so this shows the
+  route is alive, not that the stage completes. The real proof is a full BMW run.
+
+  **Useful constants measured here:** 85,240 chars = 21,812 input tokens (~3.9 chars per
+  token), and **6,165 of 6,232 output tokens were reasoning** - yet it still emitted a
+  valid tool call. That is direct counter-evidence to the "open reasoning burns the
+  budget so no tool call is ever reached" theory: a competent model reasons hard *and*
+  calls the tool. The theory failed for the free route because of the model, not the
+  request.
+
 - **Alibaba explicit context caching is a trap for this pipeline. Use the implicit cache
   and measure it.** Researched 2026-08-08 against Model Studio's own docs.
 

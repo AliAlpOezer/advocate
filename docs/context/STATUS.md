@@ -39,6 +39,20 @@ Three turns, not one: the model spends its first turns on `list_files`/`read_fil
 writing. That is fine - the stage allows five - but it means a probe that stops after one
 turn cannot tell this route from a broken one.
 
+**Answered 2026-08-08: the Alibaba route works, and the model is `deepseek-v4-pro`, not
+`qwen3.8-max`.** Both probed in parallel against the real 85,240-char request. DeepSeek
+returned a usable `read_file` turn in **112.5s** (21,812 in / 6,232 out); qwen returned
+**nothing in 40+ minutes**, socket `ESTAB` with zero bytes and zero tokens billed, and had
+to be killed - it does not honour `--timeout`. DeepSeek is also ~5x cheaper. Full table,
+the token constants, and the reasoning-budget theory it disproves are in `decisions.md`.
+
+**Still not proof, and do not record it as such:** the probe measures one turn, and a
+one-turn probe cannot tell a healthy route from a broken one (see the laguna note below).
+`CLAIMS_MODEL` is unchanged on the box. The next measurement is a full BMW redraft, which
+also grades the new cover-letter rules - one run answers both.
+
+The paragraph below is superseded on the model question and kept for the deploy detail:
+
 **The Alibaba plan key is deployed on the box (2026-08-08) and is NOT yet proven for this
 stage.** `/etc/advocate-apply/daemon.env` now carries `ALIBABA_API_KEY` (the plan-specific
 secret) and `ALIBABA_BASE_URL`. Auth and URL are verified. But the real claims request
