@@ -39,6 +39,38 @@ Three turns, not one: the model spends its first turns on `list_files`/`read_fil
 writing. That is fine - the stage allows five - but it means a probe that stops after one
 turn cannot tell this route from a broken one.
 
+## Deployed and running 2026-08-09: DeepSeek wired in, BMW redrafting
+
+**`deepseek-v4-pro` is now the `claims` route on the box**, and a full BMW redraft was
+started by hand at 12:08 UTC to prove it end to end. **Check the outcome before assuming
+anything below succeeded** - it was still running when this was written.
+
+Wiring it needed a real fix, not just an env var. `_chain_for()` built a stage's tier with
+`openrouter_tier()`, which hardcodes OpenRouter's base URL and key pool, so
+`ADVOCATE_CLAIMS_MODEL=deepseek-v4-pro` would have sent an Alibaba model id to OpenRouter -
+a 404 that reads as "the model is broken" rather than "the route is wrong". `preferred_tier()`
+(`providers.py`, `fb99cfb`) takes the endpoint from `ADVOCATE_STAGE_BASE_URL` +
+`ADVOCATE_STAGE_KEY_ENV`, named explicitly rather than inferred from the model id, and
+**raises when only one of the pair is set** so a misconfiguration cannot degrade into
+"silently used OpenRouter". Those two names mirror the probe's `--base-url` / `--key-env`
+on purpose. **22 Python tests pass, was 21.**
+
+Box state: `/srv/advocate` at `fb99cfb`, `/srv/advocate-data` at `bc8cf10`, and
+`daemon.env` carries `ADVOCATE_CLAIMS_MODEL`, `ADVOCATE_STAGE_BASE_URL`,
+`ADVOCATE_STAGE_KEY_ENV` (LF verified with `cat -A`; backup at
+`/root/daemon.env.bak-2026-08-09`).
+
+**`advocate-data` master now carries everything that was pending review** - the cover-letter
+rules, the CV rework, the profile section, `verify.ts` check 1b, the updated `_template` and
+the artifact viewer. Merged 2026-08-09 with Alp's approval; master had moved 15 commits ahead
+on job-search ticks, so it went master → branch → master. All TS tests pass on the merged tree.
+
+**This run grades four things at once**: DeepSeek end to end, the cover-letter rules, the
+profile section plus check 1b, and the bolded marathons. A failure will need attributing.
+
+**Vodafone is stuck and will not unstick itself** - `3 failed attempts, giving up until
+someone looks at it`. It needs a manual reset once `claims` is proven.
+
 **Answered 2026-08-08: the Alibaba route works, and the model is `deepseek-v4-pro`, not
 `qwen3.8-max`.** Both probed in parallel against the real 85,240-char request. DeepSeek
 returned a usable `read_file` turn in **112.5s** (21,812 in / 6,232 out); qwen returned

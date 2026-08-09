@@ -172,3 +172,20 @@ Cause: `search_linkedin_guest()` hits the unauthenticated guest endpoint; on HTT
 429/999 it logs a warning and breaks out of the paging loop rather than retrying or
 rotating UA/proxy — deliberate: public endpoints only, back off rather than evade.
 Fix: expected behavior, not a retryable bug. Reduce `pages`/frequency if it happens often.
+
+### A draft run looks like it "finished instantly" and the record never advanced
+Cause: `apply-draft.service` is a systemd **oneshot**, so while it works its `ActiveState`
+is `activating`, not `active`. `systemctl is-active --quiet` returns non-zero for
+`activating`, so the obvious watcher - `while systemctl is-active --quiet apply-draft; do
+sleep 20; done` - falls through on the first check and reports a finished run seconds after
+it started. The log then shows only the `[draft] <slug> (attempt n/3)` line, the record is
+still `drafted`, and `draftAttempts` has not moved, which reads exactly like a crash.
+Fix: poll `ActiveState` explicitly and treat three states as still-running:
+```
+while systemctl show -p ActiveState --value apply-draft.service \
+      | grep -qE '^(active|activating|deactivating)$'; do sleep 30; done
+```
+Confirm before believing a failure: `systemctl status apply-draft` will still list the
+`python -m advocate.apply.cli` child in its CGroup, with CPU time climbing. Cost on
+2026-08-09: one false "the run failed" report. Same silent-success class as the rest of
+this file, inverted - here the harness reported failure for a run that was fine.
