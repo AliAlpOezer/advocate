@@ -39,7 +39,53 @@ Three turns, not one: the model spends its first turns on `list_files`/`read_fil
 writing. That is fine - the stage allows five - but it means a probe that stops after one
 turn cannot tell this route from a broken one.
 
-## Deployed and running 2026-08-09: DeepSeek wired in, BMW redrafting
+## Result of the 2026-08-09 BMW redraft: route proven, letter improved, three defects. NOT sendable.
+
+**The run succeeded end to end in 874s** and the card was sent (`pending_review`,
+`artifactHash=0d638ec2…`, `reviewNotifiedAt=2026-08-09T12:23:32Z`).
+
+```
+analyse: ok 90.4s/2   draft_cv: ok 466.0s/2   draft_letter: ok 117.0s/1
+claims:  ok 199.6s/3 turns on deepseek-v4-pro   render: ok 1.1s
+```
+
+**DeepSeek is proven for `claims`: 199.6s against laguna's 1,109.3s - 5.6x faster and ~5x
+cheaper.** Same three-turn shape the probe predicted (`list_files`, 4x `read_file`,
+`write_file`). The stage-endpoint tier works. This question is closed.
+
+**The letter rules half-landed.** Length obeyed (~400 words, was ~1,050), it opens on BMW,
+and it closes forward. But:
+
+1. **Umlauts are corrupted throughout and this alone makes it unsendable.**
+   `Taetigkeit`, `fuenf`, `ueber`, `laeuft`, `Loesungsqualitaet`, `oeffentlich`,
+   `naechste`, `Kuendigungsfrist`, `Massstab`, `im Grossen` - ASCII transliteration mixed
+   with correct forms (`Özer`, `Grüßen`, `München` in the same document). A German
+   application written this way reads as broken. **`verify.ts` has no check for it and
+   passed the document.** This is the highest-value fix available: it is mechanical,
+   unambiguous, and no model judgement is involved. Match `[a-z]{1,}(ae|oe|ue|ss)[a-z]*`
+   against a small allowlist of genuine words (Baseline, Chunks, Massnahme is *not* one -
+   prefer an explicit wordlist over a clever regex).
+2. **The volunteered-gap rule was violated.** "Cloud-Plattformen im Produktionsmassstab
+   (Azure/AWS) sind ein ehrlicher Gap" survived, despite the new prompt forbidding exactly
+   this. So the rule needs enforcing, not just stating - it is currently the only
+   letter rule with no mechanical backing.
+3. **F11's prediction is confirmed, and is the reason paragraph 1 is still weak.** It
+   restates the posting back at BMW ("ein Team, das Openness, Pioniergeist und
+   Implementationsstärke verbindet") because that is all the drafter has. Without
+   `motivation.md` it can only admire what the ad says. **Bucket 2 is now justified by
+   evidence, not argument.**
+
+Minor: the dateline still says 7. August 2026, carried from the scaffold.
+
+**The `claims` stage found a false claim and nothing stopped the application.** Its own
+record flags `A14`: *"Alle Repositories sind oeffentlich" is not strictly true* - the Voice
+Scheduler repo is private per §4.3. The grounding check did its job; the pipeline then moved
+the record to `pending_review` anyway. **This is an invariant-3 gap: a stage produced a
+finding and no code reads it.** `verify.ts` should fail a draft whose `claims-used.md`
+contains a FINDING marker. Cheap, and it converts the grounding record from a document
+someone might read into a gate.
+
+## Deployed 2026-08-09: DeepSeek wired in
 
 **`deepseek-v4-pro` is now the `claims` route on the box**, and a full BMW redraft was
 started by hand at 12:08 UTC to prove it end to end. **Check the outcome before assuming

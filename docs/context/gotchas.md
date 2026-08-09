@@ -189,3 +189,22 @@ Confirm before believing a failure: `systemctl status apply-draft` will still li
 `python -m advocate.apply.cli` child in its CGroup, with CPU time climbing. Cost on
 2026-08-09: one false "the run failed" report. Same silent-success class as the rest of
 this file, inverted - here the harness reported failure for a run that was fine.
+
+### A run in progress is invisible in the draft logs
+Cause: `draft-logs/<slug>-<ts>.log` is only flushed when the agent finishes, so mid-run the
+newest file in that directory belongs to the *previous* run. Reading it and believing it
+describes the current run is an easy and costly mistake.
+Fix: while a run is live, track progress by artifact mtimes
+(`ls -la --time-style=+%H:%M applications/<slug>/`) and by open sockets
+(`ss -tnp | grep <pid>`). OpenRouter appears as a Cloudflare address (104.18.x.x); Alibaba
+Model Studio as 47.84.193.37. Two sockets at once is normal - the drafting stages are on
+OpenRouter while `claims` is on the stage endpoint.
+
+### German drafts come back with ASCII transliterated umlauts
+Cause: the drafting model emits `ue`/`oe`/`ae`/`ss` for `ü`/`ö`/`ä`/`ß`, inconsistently -
+`Taetigkeit` and `fuenf` alongside a correct `München` and `Grüßen` in the same document.
+Seen on the 2026-08-09 BMW redraft (deepseek-v4-pro), which `verify.ts` passed.
+Fix: not yet built. It must be a mechanical check, not a prompt rule - no model judgement is
+involved and the failure is invisible to a non-German reader. Prefer an explicit wordlist
+over a regex: real German words contain these digraphs (Baseline, Chunks, Grosskunde is not
+one) and a clever pattern will produce false positives on English technical nouns.
