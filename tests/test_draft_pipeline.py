@@ -576,6 +576,58 @@ def test_the_corpus_is_marked_as_a_cache_breakpoint_for_anthropic_only() -> None
     assert messages[0].content == "CORPUS", "the caller's messages must not be mutated"
 
 
+def test_a_stage_route_reaches_the_endpoint_it_was_measured_on() -> None:
+    """A stage's own model must not silently fall back to OpenRouter.
+
+    `deepseek-v4-pro` lives on Alibaba Model Studio, not OpenRouter. Before
+    2026-08-08 a stage preference always built an OpenRouter tier, so naming an
+    Alibaba model would have sent that id to a host that has never heard of it -
+    a 404 that reads as "the model is broken" rather than "the route is wrong".
+    """
+    from advocate.apply.providers import preferred_tier
+
+    saved = {k: os.environ.get(k) for k in
+             ("ADVOCATE_STAGE_BASE_URL", "ADVOCATE_STAGE_KEY_ENV", "PROBE_KEY")}
+    try:
+        for k in saved:
+            os.environ.pop(k, None)
+
+        # Unset: the historical behaviour, still the default.
+        assert preferred_tier("some/model:free").base_url == "https://openrouter.ai/api/v1"
+
+        # Set: the named endpoint and the key that variable points at.
+        os.environ["ADVOCATE_STAGE_BASE_URL"] = "https://example.invalid/compatible-mode/v1"
+        os.environ["ADVOCATE_STAGE_KEY_ENV"] = "PROBE_KEY"
+        os.environ["PROBE_KEY"] = "sk-test"
+        tier = preferred_tier("deepseek-v4-pro")
+        assert tier.base_url == "https://example.invalid/compatible-mode/v1"
+        assert tier.keys == ("sk-test",)
+        assert tier.model == "deepseek-v4-pro"
+
+        # Half-configured must raise, never quietly use OpenRouter.
+        os.environ["PROBE_KEY"] = ""
+        try:
+            preferred_tier("deepseek-v4-pro")
+        except RuntimeError:
+            pass
+        else:
+            raise AssertionError("an empty key must raise, not fall back")
+
+        del os.environ["ADVOCATE_STAGE_KEY_ENV"]
+        try:
+            preferred_tier("deepseek-v4-pro")
+        except RuntimeError:
+            pass
+        else:
+            raise AssertionError("a half-set pair must raise, not fall back")
+    finally:
+        for k, v in saved.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
+
+
 def test_document_helpers() -> None:
     assert body_of("<html><body>\n<p>x</p>\n</body></html>") == "<p>x</p>"
     assert body_of("<p>bare</p>") == "<p>bare</p>"

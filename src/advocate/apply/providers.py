@@ -142,6 +142,43 @@ def openrouter_tier(model: str) -> Tier:
     return Tier("openrouter-stage", model, openrouter_keys())
 
 
+def preferred_tier(model: str) -> Tier:
+    """The rung a stage's own `model` runs on - OpenRouter unless told otherwise.
+
+    A stage preference used to imply OpenRouter, because that is where every free
+    route lives. `deepseek-v4-pro` broke that assumption: it is reached through
+    Alibaba Model Studio's OpenAI-compatible endpoint with its own key, and
+    routing it to OpenRouter would send a model id that host has never heard of.
+
+    The endpoint is named explicitly rather than inferred from the model id. The
+    tempting discriminator - OpenRouter ids contain a `/` and Alibaba's do not -
+    is exactly the kind of silent inference this pipeline has been burned by
+    before: it works until a vendor ships an id shaped the other way, and then it
+    fails as a confusing 404 rather than as a misconfiguration. These two names
+    mirror `probe_claims_request.py`'s `--base-url` and `--key-env` on purpose, so
+    the route that was measured is literally the route that gets deployed.
+
+    Both variables must be set together. Setting only one is a misconfiguration
+    that would otherwise degrade into "silently used OpenRouter instead", so it
+    raises.
+    """
+    base_url = os.environ.get("ADVOCATE_STAGE_BASE_URL", "").strip()
+    key_env = os.environ.get("ADVOCATE_STAGE_KEY_ENV", "").strip()
+    if not base_url and not key_env:
+        return openrouter_tier(model)
+    if not (base_url and key_env):
+        raise RuntimeError(
+            "ADVOCATE_STAGE_BASE_URL and ADVOCATE_STAGE_KEY_ENV must be set together; "
+            f"got base_url={base_url!r} key_env={key_env!r}"
+        )
+    key = os.environ.get(key_env, "").strip()
+    if not key:
+        raise RuntimeError(
+            f"ADVOCATE_STAGE_KEY_ENV names {key_env!r}, but that variable is empty or unset"
+        )
+    return Tier("stage-endpoint", model, (key,), base_url=base_url)
+
+
 def anthropic_tier() -> Tier | None:
     """The escalation rung, or None when there is no key to reach it with.
 
@@ -354,7 +391,7 @@ class ChainedChat:
             return self.tiers
         paid = [t for t in self.tiers if t.provider == "anthropic"]
         free = [t for t in self.tiers if t.provider != "anthropic"]
-        return paid + [openrouter_tier(prefer)] + [t for t in free if t.model != prefer]
+        return paid + [preferred_tier(prefer)] + [t for t in free if t.model != prefer]
 
     def invoke(self, messages: list[AnyMessage], tools: list | None = None,
                prefer: str | None = None) -> BaseMessage:
