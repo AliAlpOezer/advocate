@@ -39,6 +39,49 @@ Three turns, not one: the model spends its first turns on `list_files`/`read_fil
 writing. That is fine - the stage allows five - but it means a probe that stops after one
 turn cannot tell this route from a broken one.
 
+## BMW went out by hand, 2026-08-09, and the lessons are now loop rules
+
+Alp finished and sent the BMW application himself. **The diff between the loop's draft and
+what he actually sent is the best spec this project has for what a good document looks
+like**, and it is one command:
+
+```
+cd advocate-data && git diff c420429 -- applications/BMW_Group_Junior_Agentic_AI_Engineer_limited_Bewerbung/
+```
+
+`c420429` is the loop output (what the box produced), `a11446e` plus the CV edits after it
+are his rewrite. Everything below is derived from that diff and is now written into
+`advocate-data/.claude/skills/cv-drafter/SKILL.md`, this repo's `CV_TASK` / `LETTER_TASK`,
+and `advocate-data/applications/_template/`. The promotion table is in
+`advocate-data/docs/context/bmw-manual-application.md`.
+
+**The cover letter changed the most, and the change is structural, not stylistic.** The
+letter shape went from four paragraphs to five. The old "bridge" paragraph was doing two
+jobs - connect to the company, and answer the posting - and doing the first one badly. Now
+paragraph 1 opens on the company in four beats (a one-clause history fact, what survived
+the reinventions, an explicit refusal of the obvious compliment, one current initiative),
+and paragraph 2 is a hinge that restates that same value as Alp's own working principle
+and lets the reason for applying fall out of the match. Character, culture and ikigai are
+carried by the standard he holds work to and are never named.
+
+**On the CV he liked the career and project material as drafted.** One thing flipped: the
+Flexus role bullet restated a TwInTraSys sentence the project entry already owned, and he
+replaced it with the role's own engineering judgement (MVC separation, declarative property
+binding). The direction is the rule - project entries carry outcomes, role bullets carry
+judgement under someone else's constraints.
+
+**Two CV rules were violated by the draft and are now enforced in prose:** the Über-mich
+paragraph must never spend its closing sentence on residence or immediate availability (the
+header already says München), and it closes instead on the Lernplastizität line - B2 to C2,
+SAP developer to agent engineer, non-runner to marathon. Achievements get one `<li>` each;
+the run-on `·` line is why the bolded marathons kept failing to stand out.
+
+**Fixed in `_template` in the same pass**: the `Anlage: Lebenslauf` line is gone, the
+dateline no longer carries a city, and the `Erfolge` block is split into four lines.
+
+Still unbacked mechanically, and worth doing next: the umlaut check, the FINDING gate in
+`verify.ts`, and the volunteered-gap rule. Alp fixed all three by hand this time.
+
 ## Result of the 2026-08-09 BMW redraft: route proven, letter improved, three defects. NOT sendable.
 
 **The run succeeded end to end in 874s** and the card was sent (`pending_review`,

@@ -294,6 +294,16 @@ Rules for this document, all of them checked mechanically the moment you write:
     and re-emphasise as hard as you like. Do not add a fact that is not there.
   - No em dash anywhere.
 
+Rules this stage is judged on that no checker can see, so they are on you:
+  - The Über-mich paragraph never mentions where he lives, that no relocation is
+    needed, or that he is available immediately. The header already gives the
+    city. It closes instead on the through-line of everything above it, landed on
+    three concrete jumps he actually made - the skill's "Move 5" rule.
+  - One achievement per <li>. Never join several onto one line behind a "·".
+  - No sentence appears twice in the document. A project entry owns project
+    facts; if a role bullet is about to restate one, write the role's own
+    engineering judgement instead.
+
 Aim at what {strategy} said, which is reproduced below with the posting and the
 current template.
 
@@ -323,9 +333,10 @@ attached and the reader has it. The letter answers the question the CV cannot: w
 competence is a worse copy of its own attachment, so it fails this stage even when
 every sentence in it is true.
 
-Read the skill's "The Anschreiben" section before writing. The shape it specifies:
-them, the bridge, the evidence, forward. Four or five short paragraphs, 350-450
-words, one page.
+Read the skill's "The Anschreiben" section before writing, including "The opening
+two paragraphs, worked out by hand on BMW". The shape it specifies: them, the
+hinge, the foundation, the recent work, coverage and out. Five short paragraphs,
+350-450 words, one page.
 
 Rules, all checked mechanically the moment you write:
   - It must name {company} and the role it is applying for.
@@ -351,6 +362,21 @@ Rules this stage is judged on that no checker can see, so they are on you:
     {strategy}'s job, written for Alp and never sent. Address a gap here only
     when the posting makes it unavoidable, in one forward-looking clause. Never a
     list, never a paragraph, and never a disclaimer nobody asked for.
+  - Paragraph 1 and paragraph 2 are one move split in two. Paragraph 1 names a
+    value {company} kept while it changed; paragraph 2 restates that same value
+    as Alp's own working principle, applies it inside his domain, and lets the
+    reason for applying fall out of the match instead of asserting it. If the
+    value named in 1 is not the one restated in 2, the letter is an admiration
+    paragraph bolted to a self-description and reads like it.
+  - Show character, working culture and motivation through the standard he holds
+    work to. Never name them. "Werte", "Kultur", "Leidenschaft" do not appear.
+  - Each evidence paragraph ends on the claim its evidence just earned, not on
+    the last item of a list.
+  - Never write where he lives, and never build an availability argument out of
+    it. Availability is at most one clause near the end.
+  - The dateline is the day of writing and carries no city.
+  - Absolute quantifiers ("alle", "jeder", "immer", "vollständig") are factual
+    claims and usually false ones. Ask what single counterexample kills it.
 
 === {strategy}, written in stage 1 ===
 {strategy_text}

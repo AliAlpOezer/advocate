@@ -200,6 +200,20 @@ Fix: while a run is live, track progress by artifact mtimes
 Model Studio as 47.84.193.37. Two sockets at once is normal - the drafting stages are on
 OpenRouter while `claims` is on the stage endpoint.
 
+### Comparing "what the box produced" against "what Alp actually sent" looks like it needs SSH
+Cause: it does not, and reaching for `alpiclaw-access.md` here wastes the whole WSL/Tailscale/
+check-approval ritual on a question git already answers. **The draft loop commits its own
+output to `advocate-data` as `draft loop <ISO timestamp>`**, so the box's artifacts are in
+local history the moment you pull. Alp's hand edits land as ordinary commits on top.
+Fix: find the loop's commit in `git log --oneline -- applications/<slug>` and diff forward:
+```
+git diff <draft-loop-sha> -- applications/<slug>/
+```
+That diff is the highest-value artifact this project produces - it is the spec for what a
+good document looks like, written by the only reviewer who counts. For BMW it is `c420429`
+(2026-08-09 12:23) against `a11446e`. SSH is only needed for things git does not carry:
+service state, journals, `daemon.env`.
+
 ### German drafts come back with ASCII transliterated umlauts
 Cause: the drafting model emits `ue`/`oe`/`ae`/`ss` for `ü`/`ö`/`ä`/`ß`, inconsistently -
 `Taetigkeit` and `fuenf` alongside a correct `München` and `Grüßen` in the same document.
