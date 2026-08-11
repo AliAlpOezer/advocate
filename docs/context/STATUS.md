@@ -18,11 +18,26 @@ tick". The timer stays and the trigger is never load-bearing, so an unset or fai
 costs latency and never work. Design record and the rejected alternatives:
 `three-loop-architecture.md` §F12. **28 TypeScript tests pass, was 24.**
 
-**Two deploy steps, both Alp's:** add `APPLY_DRAFT_TRIGGER_UNIT=apply-draft.service` to
-`/etc/advocate-apply/daemon.env` (LF only - see the CRLF trap below) and
-`systemctl restart apply-bot`. Until then the bot behaves exactly as it does today, except
-that revisions are selected first. Note `apply-draft.timer` is currently **disabled**, so
-the trigger is the only thing that would start a run at all.
+**Merged to `advocate-data` master and pushed 2026-08-11** (`d63b613`), so the box picks up
+`select.ts` on its next run - `run-draft.sh` pulls before every tick.
+
+**One deploy step left, and it is Alp's:** add `APPLY_DRAFT_TRIGGER_UNIT=apply-draft.service`
+to `/etc/advocate-apply/daemon.env` (LF only - see the CRLF trap below) and
+`systemctl restart apply-bot`. Until then the bot behaves as it did before, except that
+revisions are now selected first.
+
+**`apply-draft.timer` is enabled again (2026-08-11 12:30 UTC), and enabling it exposed a
+defect that had been there since the unit was written.** `OnCalendar=08:30,18:30` does not
+mean what it reads as: with no date part systemd splits on `:` into hour/minute/second, so
+the comma lands in the *minute* field and it normalised to `*-*-* 08:18,30:30` - 08:18:30
+and 08:30:30, twice in one morning and never in the evening. Fixed in `b09604b` with one
+`OnCalendar=*-*-* HH:30:00` line per fire, deployed and verified on the box; next elapse is
+now correctly 18:30 (+ up to 30 min jitter). **The box runs UTC**, so the fires are 10:30
+and 20:30 Munich time. The lesson generalises: check what systemd *parsed*, never how the
+line reads - `systemctl show apply-draft.timer -p TimersCalendar --value`.
+
+`journalctl -u apply-draft.service` is empty: the timer has still never triggered a run, and
+the Persistent catch-up did not fire on enable. Every draft so far has been started by hand.
 
 ## Read this first — the claims blocker, settled
 
