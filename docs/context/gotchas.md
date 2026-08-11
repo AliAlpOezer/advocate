@@ -15,6 +15,24 @@ Fix: <what to do>
 <!-- Entries below. Delete one the moment the underlying cause is fixed for good —
      a stale gotcha sends agents down a dead path with full confidence. -->
 
+### A systemd timer fires at some of its times and never at the others
+Cause: **`OnCalendar` with a comma and no date part does not mean what it reads as.**
+`OnCalendar=08:30,18:30` looks like "08:30 and 18:30" and normalises to `*-*-* 08:18,30:30` -
+08:18:30 and 08:30:30, twice in one morning and never in the evening. With no date part
+systemd splits the value on `:` into hour/minute/second, so the comma lands inside the
+*minute* field. `apply-draft.timer` meant that from the day it was written and nobody saw it,
+because the timer was disabled until 2026-08-11.
+Fix: one `OnCalendar=*-*-* HH:MM:SS` line per fire (they accumulate), and **verify the parse,
+never the line**:
+```
+systemctl show <unit>.timer -p TimersCalendar --value   # prints what systemd understood
+systemctl list-timers <unit>.timer                      # next elapse, after RandomizedDelaySec
+```
+Audited 2026-08-11: `job-search.timer` (`*-*-* 00/3:00:00`) is correct; this was the only
+affected unit. Note `list-timers`' NEXT column includes the randomised delay and LAST is the
+*timer's* last elapse, not the service's - `journalctl -u <unit>.service` is what says whether
+a run ever happened.
+
 ### A stage reports "already complete, skipped" over a file it never wrote
 Cause: the stage's `problems()` compared against the wrong file and could not tell.
 `stages.py` held `TEMPLATE_SLUG = "SSI_Schaefer_Bewerbung"` after `verify.ts` moved to
