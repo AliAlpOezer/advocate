@@ -39,6 +39,43 @@ Three turns, not one: the model spends its first turns on `list_files`/`read_fil
 writing. That is fine - the stage allows five - but it means a probe that stops after one
 turn cannot tell this route from a broken one.
 
+## Live run started 2026-08-11 ~13:30 UTC: Vodafone + two Infineon. Check it before assuming anything.
+
+**The new drafter rules are deployed.** `advocate-data` master is at `64bb353` and
+`/srv/advocate` at `c1e3986`, both pulled on the box. This is the first run that drafts
+against the BMW-derived rules, so **it grades them** - the five-paragraph letter shape, the
+profile close, one achievement per line.
+
+Three records were queued as `drafted` and the drafter was started **outside systemd**, once,
+with the per-run cap raised:
+
+```
+cd /srv/advocate-data/apply && set -a && . /etc/advocate-apply/daemon.env && set +a && \
+  APPLY_DRAFT_MAX_PER_RUN=3 setsid nohup node dist/draft.js > /tmp/draft-run-2026-08-11.log 2>&1 &
+```
+
+Safe only because `apply-draft.timer` is `disabled` - check that before ever doing it again,
+or two drafters run at once. Watch it with `tail -f /tmp/draft-run-2026-08-11.log`; that
+driver log flushes per line, unlike `draft-logs/`, which only appears when the agent finishes.
+
+Order is by `createdAt`, so: Vodafone (unstuck, see below), then
+`Infineon_Technologies_Working_Student_Agentic_AI_and_Bewerbung` (composite 84), then
+`Infineon_Technologies_Working_Student_Forward_Deployed_Engineer_Bewerbung` (composite 82).
+Both slugs come from `slugFor()` = `scaffoldNameFor()` + `_Bewerbung`; the first one reads
+oddly ("Agentic_AI_and") because `scaffoldNameFor` keeps five title words. **Do not tidy it** -
+`scaffold()` derives the folder from the lead and the record must agree.
+
+**Two record-state corrections made in the same pass:**
+- **BMW is `sent`** (channel `manual`), not `pending_review`. Alp sent it by hand on
+  2026-08-09 and the record never learned. It was silently holding a third of the
+  `pendingReviewCap` of 3.
+- **Vodafone is unstuck**: `draftAttempts` 3 -> 0, edited with `jq` in
+  `apply/data/applications.json` because `set-status` cannot reset the counter. Backup at
+  `alpiclawd:/root/applications.json.bak-2026-08-11`.
+
+**Read both letters for transliterated umlauts before approving anything.** That defect is
+still unchecked mechanically and passed `verify.ts` on BMW.
+
 ## BMW went out by hand, 2026-08-09, and the lessons are now loop rules
 
 Alp finished and sent the BMW application himself. **The diff between the loop's draft and
