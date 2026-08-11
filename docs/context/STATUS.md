@@ -1,6 +1,28 @@
 # Status — advocate
 
-Last updated: 2026-08-08
+Last updated: 2026-08-11
+
+## Built 2026-08-11, not deployed: a revision runs when the feedback lands (F12)
+
+Alp explained the Infineon revision at 09:57Z and was told "next draft tick". That was
+seven hours away, **and the tick would have drafted something else**: resume order was
+oldest-first at `MAX_PER_RUN=1`, so the revision sat third behind Vodafone and the other
+Infineon record, both of which fail their posting fetch every tick and burn the slot.
+
+Branch `revision-runs-on-feedback` in `advocate-data`. Two halves, and the first is the one
+that matters: **`select.ts` now picks explained revisions first** (oldest-first inside each
+group; a revision with no reason still is not selectable at all). **The bot then starts the
+draft unit on the spot** - `systemctl start --no-block $APPLY_DRAFT_TRIGGER_UNIT` when a
+reason lands by reply or by `/revise`, with the card saying "starting now" instead of "next
+tick". The timer stays and the trigger is never load-bearing, so an unset or failing trigger
+costs latency and never work. Design record and the rejected alternatives:
+`three-loop-architecture.md` §F12. **28 TypeScript tests pass, was 24.**
+
+**Two deploy steps, both Alp's:** add `APPLY_DRAFT_TRIGGER_UNIT=apply-draft.service` to
+`/etc/advocate-apply/daemon.env` (LF only - see the CRLF trap below) and
+`systemctl restart apply-bot`. Until then the bot behaves exactly as it does today, except
+that revisions are selected first. Note `apply-draft.timer` is currently **disabled**, so
+the trigger is the only thing that would start a run at all.
 
 ## Read this first — the claims blocker, settled
 
@@ -58,7 +80,8 @@ Safe only because `apply-draft.timer` is `disabled` - check that before ever doi
 or two drafters run at once. Watch it with `tail -f /tmp/draft-run-2026-08-11.log`; that
 driver log flushes per line, unlike `draft-logs/`, which only appears when the agent finishes.
 
-Order is by `createdAt`, so: Vodafone (unstuck, see below), then
+Order was by `createdAt` at the time of that run - **changed 2026-08-11 by F12 above**,
+explained revisions now sort first - so: Vodafone (unstuck, see below), then
 `Infineon_Technologies_Working_Student_Agentic_AI_and_Bewerbung` (composite 84), then
 `Infineon_Technologies_Working_Student_Forward_Deployed_Engineer_Bewerbung` (composite 82).
 Both slugs come from `slugFor()` = `scaffoldNameFor()` + `_Bewerbung`; the first one reads

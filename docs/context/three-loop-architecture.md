@@ -83,6 +83,7 @@ the submitter and, in F6, across the repo boundary.
 | Drafter → Verifier | filesystem, `applications/<slug>/` | 2 HTML + 2 PDF + `claims-used.md` + `strategy.md` | Record stays `drafted` with the reason in notes |
 | Verifier → Gate | record at `pending_review` | + `artifactHash` | Bot announces on its next pass; `reviewNotifiedAt` set only after Telegram confirms |
 | Gate → Drafter | record back to `drafted`, `draftTier` incremented, `revisionReason` set | the reason, verbatim | Nothing sends; the queue just does not advance |
+| Gate → Drafter (wake-up) | `systemctl start --no-block apply-draft.service` (F12) | advisory only - the store already carries the work | Logged; the timer picks it up, revisions first |
 | Gate → Submitter | record at `approved` + `approvedArtifactHash` | frozen bytes | `assertSendable` throws |
 | Submitter → Notifier | record at `sent` or `send_failed` + `confirmation` | ref, company, evidence | Alp is told, with the failure reason |
 | Gate → Viewer | `APPLY_VIEWER_BASE_URL` in the card text | `<base>/a/<slug>` | Unset → no link; review proceeds on the attached PDFs |
@@ -543,6 +544,74 @@ doing, but as bucket 1 of this, not instead of it.
 `LETTER_TASK` that states the letter's purpose and forbids the volunteered-gap audit. That
 alone fixes the self-centred structure and can be measured by redrafting BMW. Bucket 2:
 `motivate.ts`, the record field and the card. Bucket 3: the `verify.ts` citation check.
+
+## F12. A revision waits for the timer, and then drafts something else. Built 2026-08-11.
+
+**Symptom.** Alp explained an Infineon revision at 09:57Z and the bot told him it would run
+"on the next draft tick". Two things were wrong with that. The next fire was seven hours
+out (`OnCalendar=08:30,18:30` plus up to 30 minutes of jitter), and it would not have
+drafted the revision anyway: `selectTargets` resumed `drafted` records oldest-first at
+`APPLY_DRAFT_MAX_PER_RUN=1`, so the revision sat third behind Vodafone and the other
+Infineon record - both of which fail their posting fetch every tick and burn the run's one
+slot. Realistically the next day, for work he had already asked for and explained.
+
+**The ordering is the real bug, and it is fixed independently of any trigger.** `select.ts`
+now sorts explained revisions (`draftTier > 0` with a `revisionReason`) ahead of the rest of
+the resume queue, oldest-first inside each group. Alp is actively waiting on a revision and
+it carries a brief written minutes ago; a posting nobody asked about should not outrank it.
+A revision with **no** reason is deliberately not prioritised - it is not selectable at all,
+which is what the reason is for (F3).
+
+**The trigger: the bot starts the draft unit, systemd does the rest.** A new
+`APPLY_DRAFT_TRIGGER_UNIT` names a systemd unit; when a revision reason lands - by reply or
+by `/revise` - the bot runs `systemctl start --no-block <unit>` and the card says "starting
+now" instead of "next tick". Four properties are load-bearing:
+
+- **`--no-block`.** A drafting run is minutes to an hour of model calls. Waiting for it
+  inside the bot's poll loop would take the approval gate - the one process on this box that
+  has to be reachable - offline for the duration.
+- **systemd supplies the mutual exclusion for free.** `apply-draft.service` is a oneshot: it
+  cannot run twice, and a second `start` merges into the running job rather than spawning a
+  rival that would read-modify-write `applications.json` concurrently (F5's lost-update
+  hazard, made reachable for the first time by an event-driven trigger). No lock file, no
+  pid file, nothing to leak. This is why the unit must stay `Type=oneshot`.
+- **It is never load-bearing.** The reason is committed to the store *before* the trigger
+  fires; the timer still runs twice a day, and selection now puts the revision first. A
+  trigger that fails, or is simply unset, costs latency and never work. Same rule as the F10
+  viewer, and the same reason: an approval path that depends on a second mechanism being up
+  is a worse path.
+- **A unit name, not a command.** Passed as an argv element to `execFile`, never through a
+  shell. The bot is root with the Telegram token, seven OpenRouter keys and
+  `ANTHROPIC_API_KEY` in its environment; a configurable string reaching a shell there is a
+  much larger surface than one reaching `systemctl start`.
+
+Unset means off, which is what the laptop wants: there is no unit here, and a bot promising
+"starting now" while starting nothing is worse than one that honestly says "next tick". The
+startup log line names the configured unit for the same reason - an unset trigger is
+otherwise indistinguishable from a working one until a revision is quietly slow.
+
+**Known gap, accepted.** If a drafting run is already in flight, the merged job finishes
+with *that* run and the revision waits for the timer. Fail-safe rather than fail-dangerous,
+and rare: runs are twice daily and bounded. **Rejected: re-triggering when a run completes**
+if a revision is still selectable - it closes the gap and risks three back-to-back paid Opus
+runs on a revision that keeps failing verification, which is the wrong failure to automate.
+
+**Rejected: running the drafter inside the bot process** (importing `draft.ts`, or spawning
+`node dist/draft.js` as its child). It puts an hour-long, memory-heavy, model-driven run
+inside the resident approval gate on a 3.6 GB box, where a crash flaps the unit under
+`Restart=always`; it loses systemd's serialisation and the separate journal; and `draft.ts`
+is deliberately not importable after an `import()` of it started a live Vodafone run on
+2026-08-06. **Rejected: a fast poll timer** (every few minutes, revisions only) - the purest
+"store is the interface" answer, but it needs either a second unit that can run concurrently
+with the first, which reintroduces exactly the mutex problem systemd was solving for free,
+or a shorter main timer, which breaks the cadence reasoning the timer file exists to defend.
+Kept as the fallback if `systemctl` turns out not to work from the bot's context.
+**Rejected: raising `APPLY_DRAFT_MAX_PER_RUN`** - the problem is ordering, not volume, and
+the per-run cap is tied to the review queue Alp has to read.
+
+Tests: 4 added to `advocate-data/apply/src/selftest.ts` (28 total, `npm test`), covering the
+new order, the tie-break inside it, the unexplained-revision case, and that sorting first is
+not an exemption from the F9 review-queue cap.
 
 ## Open questions
 
