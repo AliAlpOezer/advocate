@@ -72,7 +72,7 @@ def match_roadmap(rows: list[DemandRow]) -> list[RankedRow]:
 
 def list_concepts() -> list[str]:
     """Live read of your vault's concept spine — a freshness signal (graceful if absent)."""
-    root = Path(os.environ.get("CONCEPTS_DIR", "C:/Users/AliAlpOezer/dev/ai-sprint-vault/Concepts"))
+    root = Path(os.environ.get("CONCEPTS_DIR", str(Path.home() / "dev" / "ai-sprint-vault" / "Concepts")))
     try:
         return sorted(p.stem for p in root.glob("*.md"))
     except OSError:

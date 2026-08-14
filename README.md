@@ -1,3 +1,26 @@
+# Advocate
+
+LangGraph system that finds relevant job postings, tailors an application to
+each one, and gates every outward step behind human approval.
+
+Its design constraint: **the generator never writes facts.** It selects claim
+IDs from a graded evidence store and writes connective prose around them, so
+every factual sentence in a generated document traces to verified evidence.
+See `docs/context/advocate-system-concept.md` for the full architecture.
+
+Formerly `job-agent`, whose discovery and fit-scoring graph is now the
+`sources/` layer here.
+
+## Data separation
+
+This repo contains **no personal data by design**. The evidence base, master
+resumes, photo assets and previously sent applications live in a separate
+private repository (`advocate-data`) which the system reads at run time.
+`.gitignore` enforces the boundary. Contributions and forks get the engine and
+synthetic example claims, never a real candidate's dossier.
+
+---
+
 # 🔎 Munich AI Job-Market Agent — LangGraph flagship
 
 A **supervisor graph** that answers *"what skills does the Munich AI-Werkstudent market want, and does my roadmap cover them?"* from live public data. The Python/LangGraph counterpart to the TS AI-SDK spike (`../spikes/job-agent/`) — same problem, two stacks = a built-in before/after.
@@ -39,6 +62,6 @@ Copy-Item .env.example .env   # then add OPENROUTER_API_KEY
 
 ## 🔗 Design notes & gotchas (in the knowledge vault)
 The durable *why* (and what broke) lives in the vault, linked back to this code:
-- [Free LLM routes ignore json_schema](<file:///C:/Users/AliAlpOezer/dev/ai-sprint-vault/Patterns/Gotchas/Free LLM routes ignore json_schema.md>) — why `extract.py` prompts-for-JSON + Pydantic-validates instead of `with_structured_output`
-- [Concepts/Agents](<file:///C:/Users/AliAlpOezer/dev/ai-sprint-vault/Concepts/Agents.md>) · [Concepts/Structured output](<file:///C:/Users/AliAlpOezer/dev/ai-sprint-vault/Concepts/Structured output.md>) — the design principles above are written up here
-- [Robust LLM extraction pattern](<file:///C:/Users/AliAlpOezer/dev/ai-sprint-vault/Patterns/Snippets/Robust LLM extraction (prompt + validate + retry).md>)
+- [Free LLM routes ignore json_schema](`ai-sprint-vault/Patterns/Gotchas/Free LLM routes ignore json_schema.md`) — why `extract.py` prompts-for-JSON + Pydantic-validates instead of `with_structured_output`
+- [Concepts/Agents](`ai-sprint-vault/Concepts/Agents.md`) · [Concepts/Structured output](`ai-sprint-vault/Concepts/Structured output.md`) — the design principles above are written up here
+- [Robust LLM extraction pattern](`ai-sprint-vault/Patterns/Snippets/Robust LLM extraction (prompt + validate + retry).md`)
